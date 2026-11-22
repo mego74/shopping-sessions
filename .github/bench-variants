@@ -1,2 +1,8 @@
-nolpf -DNOLPF
-oldassist -DOLDASSIST
+cun5 -DCUNROLL=5
+cun8 -DCUNROLL=8
+nun2 -DNUNROLL=2
+pf512 -DINPF=512
+pf2k -DINPF=2048
+pfw128 -DPFW=128
+pend16 -DPEND=16
+chunk2 -DCHUNKMB=2
