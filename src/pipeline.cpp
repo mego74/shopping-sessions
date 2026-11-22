@@ -2219,8 +2219,22 @@ static void process_person(TCtx& W, u64 nameref, const u32* ev, u32 n, const CK*
   auto flush = [&](u32 c, u32 a, u32 b) {
     u32 lo = a >= WEEK ? a - WEEK : 0;
     u32 hi = b - WEEK;
-    u32 i0 = (u32)(std::lower_bound(ss, ss + ns, lo) - ss);
-    u32 i1 = (u32)(std::upper_bound(ss + i0, ss + ns, hi) - ss);
+    u32 i0, i1;
+#ifndef OLDASSIST
+    if (ns <= 16) {  // few sessions: branchless counts instead of binary searches
+      i0 = 0;
+      i1 = 0;
+      for (u32 q = 0; q < ns; q++) {
+        i0 += ss[q] < lo;
+        i1 += ss[q] <= hi;
+      }
+      if (i1 < i0) i1 = i0;
+    } else
+#endif
+    {
+      i0 = (u32)(std::lower_bound(ss, ss + ns, lo) - ss);
+      i1 = (u32)(std::upper_bound(ss + i0, ss + ns, hi) - ss);
+    }
     CStat* asst = W.cs_.data() + (size_t)c * ND;
     while (i0 < i1) {
       u32 e2 = std::min(i1, nds[i0]);
