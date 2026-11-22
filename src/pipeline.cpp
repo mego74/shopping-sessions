@@ -36,6 +36,7 @@ typedef int64_t i64;
 
 #define LIKELY(x) __builtin_expect(!!(x), 1)
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
+#define AI __attribute__((always_inline)) inline
 
 static const i64 DAYMS = 86400000LL;
 static const u32 GAP = 1800000u;
@@ -146,21 +147,21 @@ static std::string read_small(const std::string& path) {
 }
 
 // ---------------------------------------------------------------- hashing
-static inline u64 load64(const char* p) {
+static AI u64 load64(const char* p) {
   u64 v;
   memcpy(&v, p, 8);
   return v;
 }
-static inline u64 loadp(const char* p, u32 n) {  // 0 <= n <= 8, may over-read
+static AI u64 loadp(const char* p, u32 n) {  // 0 <= n <= 8, may over-read
   if (n == 0) return 0;
   u64 v = load64(p);
   return n >= 8 ? v : (v & ((1ULL << (8 * n)) - 1));
 }
-static inline u64 mum(u64 a, u64 b) {
+static AI u64 mum(u64 a, u64 b) {
   __uint128_t r = (__uint128_t)a * b;
   return (u64)r ^ (u64)(r >> 64);
 }
-static inline u64 fmix(u64 h) {
+static AI u64 fmix(u64 h) {
   h ^= h >> 33;
   h *= 0xff51afd7ed558ccdULL;
   h ^= h >> 33;
@@ -168,7 +169,7 @@ static inline u64 fmix(u64 h) {
   h ^= h >> 33;
   return h;
 }
-static inline u64 hstr(const char* p, u32 n) {
+static AI u64 hstr(const char* p, u32 n) {
   u64 seed = 0xa0761d6478bd642fULL ^ ((u64)n * 0xe7037ed1a0b428dbULL);
   while (n > 16) {
     seed = mum(load64(p) ^ 0x8ebc6af09c88c6e3ULL, load64(p + 8) ^ seed);
@@ -186,7 +187,7 @@ static inline u64 hstr(const char* p, u32 n) {
   u64 h = fmix(mum(a ^ 0x589965cc75374cc3ULL, b ^ seed ^ 0x1d8e4e27c47d124fULL));
   return h ? h : 1;
 }
-static inline u32 crcstr(const char* p, u32 n) {
+static AI u32 crcstr(const char* p, u32 n) {
   u64 c = n;
   while (n >= 8) {
 #if defined(__x86_64__)
@@ -520,7 +521,7 @@ static void init_cal() {
 }
 
 // "YYYY-MM-DDTHH:MM:SS" at s -> seconds since epoch (validated). Reads s[0..24).
-static inline bool dt19(const char* s, i64& secs) {
+static AI bool dt19(const char* s, i64& secs) {
   const u64 a = load64(s), b = load64(s + 8), c = load64(s + 16);
   const u64 SA = 0xFF0000FF00000000ULL, VA = ((u64)'-' << 32) | ((u64)'-' << 56);
   const u64 SB = 0x0000FF0000FF0000ULL, VB = ((u64)'T' << 16) | ((u64)':' << 40);
@@ -553,7 +554,7 @@ static inline bool dt19(const char* s, i64& secs) {
 }
 
 // F1 (n==20) or F2 (n==25). Returns ms.
-static inline bool parse_f12(const char* s, u32 n, i64& ms) {
+static AI bool parse_f12(const char* s, u32 n, i64& ms) {
   i64 secs;
   if (n == 20) {
     if (s[19] != 'Z' || !dt19(s, secs)) return false;
@@ -575,11 +576,11 @@ static inline bool parse_f12(const char* s, u32 n, i64& ms) {
   return true;
 }
 
-static inline bool all_digits8(u64 v) {
+static AI bool all_digits8(u64 v) {
   const u64 t = v ^ 0x3030303030303030ULL;
   return ((t | (t + 0x0606060606060606ULL)) & 0xF0F0F0F0F0F0F0F0ULL) == 0;
 }
-static inline u64 swar8(u64 v) {  // 8 ASCII digits (validated), first char in lowest byte
+static AI u64 swar8(u64 v) {  // 8 ASCII digits (validated), first char in lowest byte
   v -= 0x3030303030303030ULL;
   v = (v * 10) + (v >> 8);
   v = (((v & 0x000000FF000000FFULL) * (100 + (1000000ULL << 32))) +
@@ -588,7 +589,7 @@ static inline u64 swar8(u64 v) {  // 8 ASCII digits (validated), first char in l
   return v;
 }
 
-static inline bool parse_ts(const char* s, u32 n, i64& ms) {
+static AI bool parse_ts(const char* s, u32 n, i64& ms) {
   if (n == 0) return false;
   if (n >= 5 && s[4] == '-') return parse_f12(s, n, ms);
   if (LIKELY(n == 13)) {
@@ -613,7 +614,7 @@ static inline bool parse_ts(const char* s, u32 n, i64& ms) {
   return true;
 }
 
-static inline bool parse_price(const char* s, u32 n, u32& v) {
+static AI bool parse_price(const char* s, u32 n, u32& v) {
   if (n == 0) return false;
   u32 i = 0;
   while (i < n && s[i] == '0') i++;
@@ -634,6 +635,8 @@ struct SMap {
   std::vector<u64> key;
   std::vector<i32> val;
   std::vector<std::string> str;
+  std::vector<u64> e0, e1;  // first 16 bytes of each key, zero padded
+  std::vector<u32> elen;
   u64 mask = 0;
   void init(size_t n) {
     size_t c = 16;
@@ -642,17 +645,26 @@ struct SMap {
     val.assign(c, -1);
     mask = c - 1;
   }
-  inline i32 find(const char* p, u32 n) const {
-    u64 h = hstr(p, n);
+  AI i32 find(const char* p, u32 n) const {  // p may be over-read by up to 8 bytes
+    const u64 h = hstr(p, n);
     u64 i = h & mask;
     for (;;) {
-      i32 v = val[i];
+      const i32 v = val[i];
       if (v < 0) return -1;
-      if (key[i] == h && str[v].size() == n && memcmp(str[v].data(), p, n) == 0) return v;
+      if (key[i] == h && elen[v] == n) {
+        if (n <= 16) {
+          const u64 a = loadp(p, n < 8 ? n : 8), b = n > 8 ? loadp(p + 8, n - 8) : 0;
+          if (a == e0[v] && b == e1[v]) return v;
+        } else if (memcmp(str[v].data(), p, n) == 0)
+          return v;
+      }
       i = (i + 1) & mask;
     }
   }
-  i32 insert(const char* p, u32 n) {
+  i32 insert(const char* p0, u32 n) {
+    std::string pad(p0, n);
+    pad.append(16, '\0');
+    const char* p = pad.data();
     i32 f = find(p, n);
     if (f >= 0) return f;
     u64 h = hstr(p, n);
@@ -661,6 +673,9 @@ struct SMap {
     key[i] = h;
     val[i] = (i32)str.size();
     str.emplace_back(p, n);
+    e0.push_back(loadp(p, n < 8 ? n : 8));
+    e1.push_back(n > 8 ? loadp(p + 8, n > 16 ? 8 : n - 8) : 0);
+    elen.push_back(n);
     return val[i];
   }
 };
@@ -690,6 +705,7 @@ struct IdSlot {
 };
 static IdSlot* IDS = nullptr;
 static u64* IDP = nullptr;            // string ptr per slot
+static u64* PRE = nullptr;            // first 8 bytes of the ID, big-endian (byte-wise order)
 static std::atomic<u32>* PAR = nullptr;
 static std::atomic<u32>* BEST = nullptr;
 static u64 IDCAP = 16;
@@ -727,7 +743,9 @@ struct Arena {
   T* chunks[2048];
   u32 nblocks = 0;
   Arena() { memset(chunks, 0, sizeof chunks); }
-  inline u32 alloc() {
+  std::vector<u32> owner;  // block -> partition that owns it
+  inline u32 alloc(u32 own = 0) {
+    owner.push_back(own);
     u32 b = nblocks++;
     u32 c = b / CHB;
     if (c >= 2048) die("arena overflow");
@@ -756,15 +774,15 @@ static inline void store_fence() {
 }
 
 template <class T>
-struct Strm {
+struct alignas(64) Strm {
   T* wp = nullptr;
   T* we = nullptr;
   T* bp = nullptr;
   u32 cur = 0;
   std::vector<u32> blocks;
-  inline u32 push(const T& v, Arena<T>& a) {
+  inline u32 push(const T& v, Arena<T>& a, u32 own = 0) {
     if (UNLIKELY(wp == we)) {
-      cur = a.alloc();
+      cur = a.alloc(own);
       blocks.push_back(cur);
       bp = wp = a.blk(cur);
       we = wp + BLK;
@@ -776,14 +794,14 @@ struct Strm {
   // Write-combining push for 16-byte records: 4 records collect in a 64-byte line buffer
   // (thread-local, cache resident), then go to the stream as one streaming store.
   u32 fill = 0;
-  inline u32 push_wc(const T& v, Arena<T>& a, T* line) {
+  inline u32 push_wc(const T& v, Arena<T>& a, T* line, u32 own = 0) {
     static_assert(sizeof(T) == 16, "wc push needs 16-byte records");
 #if !defined(__x86_64__)
     (void)line;
-    return push(v, a);  // no streaming stores: plain scatter is faster
+    return push(v, a, own);  // no streaming stores: plain scatter is faster
 #endif
     if (fill == 0 && UNLIKELY(wp == we)) {
-      cur = a.alloc();
+      cur = a.alloc(own);
       blocks.push_back(cur);
       bp = wp = a.blk(cur);
       we = wp + BLK;
@@ -842,10 +860,12 @@ struct TCtx {
   u64 n_ev_lines = 0, n_ev_valid = 0, n_ck_valid = 0;
   // dedup scratch
   Buf<ERec> dtab;
+  std::vector<std::vector<u64>> kills;  // per person partition: (thread << 32 | arena index) of losing copies
   // person scratch
   Buf<u64> ptk;
   Buf<u32> ptv;
   std::vector<Pers> persons;
+  std::vector<u64> kl;
   Buf<u32> lp_of;
   Buf<u64> tmp64;
   Buf<u64> ev;
@@ -931,6 +951,7 @@ static inline u32 id_insert(u64 h, u64 ptr) {
       u64 exp = 0;
       if (IDS[i].key.compare_exchange_strong(exp, h, std::memory_order_relaxed)) {
         IDP[i] = ptr;
+        PRE[i] = __builtin_bswap64(loadp(decp(ptr), decn(ptr) < 8 ? decn(ptr) : 8));
         PAR[i].store((u32)i, std::memory_order_relaxed);
         BEST[i].store(INVALID, std::memory_order_relaxed);
         return (u32)i;
@@ -970,6 +991,7 @@ static void links_phase(const std::vector<MFile>& lf) {
   IDCAP = std::max<u64>(64, nl * 3 + 64);
   IDS = (IdSlot*)big_alloc(IDCAP * sizeof(IdSlot));
   IDP = (u64*)big_alloc(IDCAP * sizeof(u64));
+  PRE = (u64*)big_alloc(IDCAP * sizeof(u64));
   PAR = (std::atomic<u32>*)big_alloc(IDCAP * sizeof(u32));
   BEST = (std::atomic<u32>*)big_alloc(IDCAP * sizeof(u32));
   logt("links parsed");
@@ -1011,7 +1033,10 @@ static void links_phase(const std::vector<MFile>& lf) {
       u32 r = uf_find((u32)i);
       u32 cur = BEST[r].load(std::memory_order_relaxed);
       for (;;) {
-        if (cur != INVALID && cmpstr(IDP[i], IDP[cur]) >= 0) break;
+        if (cur != INVALID) {
+          const u64 x = PRE[i], y = PRE[cur];
+          if (x != y ? x > y : cmpstr(IDP[i], IDP[cur]) >= 0) break;
+        }
         if (BEST[r].compare_exchange_weak(cur, (u32)i, std::memory_order_relaxed)) break;
       }
     }
@@ -1038,7 +1063,7 @@ struct PendC {
   u64 huid, key, idp;
 };
 
-static inline void lookup_person(u64 h, u64& pk, bool& linked) {
+static AI void lookup_person(u64 h, u64& pk, bool& linked) {
   u64 j = id_home(h);
   for (;;) {
     u64 k = IDS[j].key.load(std::memory_order_relaxed);
@@ -1071,7 +1096,7 @@ static inline void flushE(TCtx& W, PendE* pe, int n) {
         W.ns[p].push({pk, pe[i].np}, W.na);
       }
     }
-    u32 idx = W.ps[p].push_wc({pk, pe[i].packed}, W.pa, W.pswc + 4 * (size_t)p);
+    u32 idx = W.ps[p].push_wc({pk, pe[i].packed}, W.pa, W.pswc + 4 * (size_t)p, p);
     if (UNLIKELY(idx >= lim - 1)) die("too many records per thread");
     W.es[pe[i].q].push_wc({pe[i].ekey, pe[i].ing, tid | idx}, W.ea, W.eswc + 4 * (size_t)pe[i].q);
   }
@@ -1188,11 +1213,10 @@ static void dedup_partition(TCtx& W, u32 q) {
   memset(tab, 0, cap * sizeof(ERec));
   const u64 mask = cap - 1;
   int lg = __builtin_ctzll(cap);
-  auto kill = [&](u32 g) {
+  auto kill = [&](u32 g) {  // queue the losing copy for its person partition (no random write)
     if (g == INVALID) return;
     u32 t = g >> TSHIFT, idx = g & ((1u << TSHIFT) - 1);
-    PRec* r = TC[t].pa.at(idx);
-    r->packed = (r->packed & ~XMASK) | XDEAD;
+    W.kills[TC[t].pa.owner[idx / BLK]].push_back(((u64)t << 32) | idx);
   };
   for (int t = 0; t < NT; t++) {
     Strm<ERec>& st = TC[t].es[q];
@@ -1497,14 +1521,24 @@ static void person_partition(TCtx& W, u32 p) {
     cap = nc;
     mask = nm;
   };
+  std::vector<u64>& KL = W.kl;
+  KL.clear();
+  for (int t = 0; t < NT; t++) KL.insert(KL.end(), TC[t].kills[p].begin(), TC[t].kills[p].end());
+  std::sort(KL.begin(), KL.end());
+  KL.push_back(~0ULL);
+  size_t kp = 0;
   for (int t = 0; t < NT; t++) {
     Strm<PRec>& st = TC[t].ps[p];
     for (size_t b = 0; b < st.blocks.size(); b++) {
       const PRec* r = TC[t].pa.blk(st.blocks[b]);
       u32 cnt = st.bcount(b);
+      const u64 base = ((u64)t << 32) | ((u64)st.blocks[b] * BLK);
       for (u32 i = 0; i < cnt; i++) {
         const PRec& x = r[i];
-        if ((x.packed & XMASK) == XDEAD) continue;
+        if (UNLIKELY(KL[kp] == base + i)) {
+          kp++;
+          continue;
+        }
         u64 j = (x.pk >> 20) & mask;
         u32 lp;
         for (;;) {
@@ -2089,6 +2123,7 @@ int main(int argc, char** argv) {
   for (int t = 0; t < NT; t++) {
     TC[t].id = t;
     TC[t].ps.resize(1u << PBITS);
+    TC[t].kills.resize(1u << PBITS);
     TC[t].ns.resize(1u << PBITS);
     TC[t].pswc = (PRec*)aligned_alloc(64, (size_t)64 << PBITS);
     TC[t].eswc = (ERec*)aligned_alloc(64, (size_t)64 << QBITS);

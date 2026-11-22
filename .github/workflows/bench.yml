@@ -33,6 +33,21 @@ jobs:
           for n in 4 8; do for i in 1 2 3 4 5; do rm -rf /tmp/out
             /usr/bin/time -f "RUN ncpu=$n wall %e user %U sys %S maxrss %MKB faults %R" env NCPU=$n PIPE_VERBOSE=1 /tmp/pipeline /tmp/p20 /tmp/out 2>&1 | tee -a $R | tail -1
           done; done
+      - name: Docker (scorer-style container run)
+        continue-on-error: true
+        run: |
+          R=results/$(git rev-parse --short HEAD).txt
+          docker build -q -t ss:bench . >/dev/null
+          mkdir -p /tmp/dout /tmp/dscratch && chmod 777 /tmp/dout /tmp/dscratch
+          for i in 1 2 3 4; do sudo rm -rf /tmp/dout/*
+            s=$(date +%s.%N)
+            docker run --rm --network none --read-only --tmpfs /tmp:rw,size=64m,mode=1777 --cap-drop ALL --security-opt no-new-privileges \
+              --cpus 4 --memory 14g --memory-swap 14g --user 1000:1000 -v /tmp/p20:/data:ro -v /tmp/dout:/output -v /tmp/dscratch:/scratch \
+              -e DATA_DIR=/data -e OUTPUT_DIR=/output -e SCRATCH_DIR=/scratch -e HOME=/scratch -e NCPU=4 -e MEM_GB=14 ss:bench
+            e=$(date +%s.%N); echo "DOCKER run $i: $(echo "$e - $s" | bc) s (includes docker CLI overhead)" | tee -a $R
+          done
+          cid=$(docker run -d --network none --cpus 4 --user 1000:1000 -v /tmp/p20:/data:ro -v /tmp/dout:/output -e NCPU=4 ss:bench); docker wait $cid >/dev/null
+          docker inspect -f 'DOCKER state start {{.State.StartedAt}} end {{.State.FinishedAt}} exit {{.State.ExitCode}}' $cid | tee -a $R; docker rm $cid >/dev/null
       - name: Perf
         continue-on-error: true
         run: |
