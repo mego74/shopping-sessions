@@ -833,9 +833,11 @@ struct CK {
   u64 key;
   u64 idp;
 };
-struct CStat {
-  u32 sess, purch, assist, pad;
-  u64 rev;
+struct CStat {  // hot per (campaign, day) counters
+  u32 sess, assist;
+};
+struct CRev {  // touched only by purchasing sessions
+  u64 purch, rev;
 };
 struct CampState {
   u32 stamp, a, b, pad;
@@ -893,6 +895,7 @@ struct TCtx {
   std::vector<i64> o_rev;
   std::vector<i16> o_cat;
   std::vector<CStat> cs_;
+  std::vector<CRev> cr_;
 };
 static TCtx* TC = nullptr;
 
@@ -1398,11 +1401,11 @@ static void process_person(TCtx& W, Pers& P, u64* ev, CK* ck) {
   const u32 org = (u32)NC;
   auto add = [&](u32 c, u32 d, u64 rev) {
     size_t ix = (size_t)c * ND + d;
-    CStat& st = W.cs_[ix];
-    st.sess++;
+    W.cs_[ix].sess++;
     if (rev) {
-      st.purch++;
-      st.rev += rev;
+      CRev& r = W.cr_[ix];
+      r.purch++;
+      r.rev += rev;
     }
   };
   if (m == 0) {
@@ -1694,7 +1697,7 @@ static void person_partition(TCtx& W, u32 p) {
   // names: copy each person's name once into the thread arena (prefetched)
   {
     const size_t NP = PS.size();
-    const size_t D = 8;
+    const size_t D = 32;
     for (size_t i = 0; i < NP; i++) {
       if (i + D < NP) {
         const Pers& Q = PS[i + D];
@@ -2196,7 +2199,8 @@ int main(int argc, char** argv) {
       W.catrev.assign(CATS.size(), 0);
       W.cst.assign(NC + 1, CampState{0, 0, 0, 0});
       size_t cd = (size_t)(NC + 1) * ND;
-      W.cs_.assign(cd, CStat{0, 0, 0, 0, 0});
+      W.cs_.assign(cd, CStat{0, 0});
+      W.cr_.assign(cd, CRev{0, 0});
       for (;;) {
         u32 i = next.fetch_add(1);
         if (i >= P) break;
@@ -2226,10 +2230,11 @@ int main(int argc, char** argv) {
         for (int u = 0; u < NT; u++)
           for (size_t i = 0; i < cd; i++) {
             const CStat& x = TC[u].cs_[i];
+            const CRev& y = TC[u].cr_[i];
             s[i] += x.sess;
-            pu[i] += x.purch;
+            pu[i] += y.purch;
             as[i] += x.assist;
-            rv[i] += x.rev;
+            rv[i] += y.rev;
           }
         std::vector<ColDef> defs = {{"campaign_id", PT_BYTE_ARRAY, 0, 1, false},
                                     {"channel", PT_BYTE_ARRAY, 0, 1, false},
