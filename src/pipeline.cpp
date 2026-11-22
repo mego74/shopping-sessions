@@ -1215,7 +1215,7 @@ struct alignas(64) Strm {
 #define PACKSC 1
 #endif
 #ifndef DDPF
-#define DDPF 8
+#define DDPF 0
 #endif
 template <class T>
 struct SHot {
