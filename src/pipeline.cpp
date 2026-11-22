@@ -37,6 +37,9 @@ typedef int64_t i64;
 #define LIKELY(x) __builtin_expect(!!(x), 1)
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
 #define AI __attribute__((always_inline)) inline
+#if !defined(NOLINESIMD) && !defined(LINESIMD)
+#define LINESIMD 1
+#endif
 
 static const i64 DAYMS = 86400000LL;
 static const u32 GAP = 1800000u;
@@ -1060,6 +1063,7 @@ struct TCtx {
   StreamSet<ERec> es;
   StreamSet<CRec> cs;
   std::vector<LRec> lrecs;
+  std::vector<u32> claimed;  // ID-table slots this thread inserted in the links phase
   // counters
   u64 n_ev_lines = 0, n_ev_valid = 0, n_ck_valid = 0;
   // dedup scratch
@@ -1149,7 +1153,7 @@ static inline void uf_unite(u32 a, u32 b) {
     if (PAR[a].compare_exchange_strong(exp, b, std::memory_order_relaxed)) return;
   }
 }
-static inline u32 id_insert(u64 h, u64 ptr) {
+static inline u32 id_insert(u64 h, u64 ptr, std::vector<u32>& claimed) {
   u64 i = id_home(h);
   for (;;) {
     u64 k = IDS[i].key.load(std::memory_order_relaxed);
@@ -1161,6 +1165,7 @@ static inline u32 id_insert(u64 h, u64 ptr) {
         PRE[i] = __builtin_bswap64(loadp(decp(ptr), decn(ptr) < 8 ? decn(ptr) : 8));
         PAR[i].store((u32)i, std::memory_order_relaxed);
         BEST[i].store(INVALID, std::memory_order_relaxed);
+        claimed.push_back((u32)i);
         return (u32)i;
       }
       if (exp == h) return (u32)i;
@@ -1212,8 +1217,8 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
         __builtin_prefetch(&IDS[id_home(L[i + D].b)], 1);
       }
       LRec& r = L[i];
-      u32 sa = id_insert(r.a, r.pa);
-      u32 sb = id_insert(r.b, r.pb);
+      u32 sa = id_insert(r.a, r.pa, TC[t].claimed);
+      u32 sb = id_insert(r.b, r.pb, TC[t].claimed);
       r.a = sa;
       r.b = sb;
     }
@@ -1229,55 +1234,42 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
       if (L[i].a != L[i].b) uf_unite((u32)L[i].a, (u32)L[i].b);
     }
   });
-  auto range = [&](int t, u64& lo, u64& hi) {
-    lo = IDCAP * (u64)t / NT;
-    hi = IDCAP * (u64)(t + 1) / NT;
-  };
+  // passes below visit only the slots holding linked ids (each thread: the slots it inserted)
   par_run([&](int t) {
-    u64 lo, hi;
-    range(t, lo, hi);
-    for (u64 i = lo; i < hi; i++) {
-      if (IDS[i].key.load(std::memory_order_relaxed) == 0) continue;
-      u32 r = uf_find((u32)i);
+    for (u32 i : TC[t].claimed) {
+      u32 r = uf_find(i);
       u32 cur = BEST[r].load(std::memory_order_relaxed);
       for (;;) {
         if (cur != INVALID) {
           const u64 x = PRE[i], y = PRE[cur];
           if (x != y ? x > y : cmpstr(IDP[i], IDP[cur]) >= 0) break;
         }
-        if (BEST[r].compare_exchange_weak(cur, (u32)i, std::memory_order_relaxed)) break;
+        if (BEST[r].compare_exchange_weak(cur, i, std::memory_order_relaxed)) break;
       }
     }
   });
-  // dense person ids: components first (roots numbered per thread range), then every linked id
+  // dense person ids: components first (roots numbered per thread), then every linked id
   std::vector<u32> nroot(NT + 1, 0);
   par_run([&](int t) {
-    u64 lo, hi;
-    range(t, lo, hi);
     u32 c = 0;
-    for (u64 i = lo; i < hi; i++)
-      if (IDS[i].key.load(std::memory_order_relaxed) != 0 && uf_find((u32)i) == (u32)i) c++;
+    for (u32 i : TC[t].claimed)
+      if (uf_find(i) == i) c++;
     nroot[t + 1] = c;
   });
   for (int t = 0; t < NT; t++) nroot[t + 1] += nroot[t];
   par_run([&](int t) {
-    u64 lo, hi;
-    range(t, lo, hi);
     u32 k = nroot[t];
-    for (u64 i = lo; i < hi; i++)
-      if (IDS[i].key.load(std::memory_order_relaxed) != 0 && PAR[i].load(std::memory_order_relaxed) == (u32)i) {
+    for (u32 i : TC[t].claimed)
+      if (PAR[i].load(std::memory_order_relaxed) == i) {
         IDS[i].pid1.store(k + 1, std::memory_order_relaxed);
         NAMEP[k] = IDP[BEST[i].load(std::memory_order_relaxed)];
         k++;
       }
   });
   par_run([&](int t) {
-    u64 lo, hi;
-    range(t, lo, hi);
-    for (u64 i = lo; i < hi; i++) {
-      if (IDS[i].key.load(std::memory_order_relaxed) == 0) continue;
-      u32 r = uf_find((u32)i);
-      if (r != (u32)i) IDS[i].pid1.store(IDS[r].pid1.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    for (u32 i : TC[t].claimed) {
+      u32 r = uf_find(i);
+      if (r != i) IDS[i].pid1.store(IDS[r].pid1.load(std::memory_order_relaxed), std::memory_order_relaxed);
     }
   });
   PIDCTR.store(nroot[NT]);
