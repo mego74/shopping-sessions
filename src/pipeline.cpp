@@ -529,12 +529,14 @@ static inline bool dt19(const char* s, i64& secs) {
   const u64 DA = 0x00FFFF00FFFFFFFFULL, DB = 0xFFFF00FFFF00FFFFULL, DC = 0x0000000000FFFF00ULL;
   const u64 ta = (a ^ Z) & DA, tb = (b ^ Z) & DB, tc = (c ^ Z) & DC;
   if (((ta | (ta + SIX)) & HI & DA) | ((tb | (tb + SIX)) & HI & DB) | ((tc | (tc + SIX)) & HI & DC)) return false;
-  const unsigned y = (unsigned)((ta & 0xFF) * 1000 + ((ta >> 8) & 0xFF) * 100 + ((ta >> 16) & 0xFF) * 10 + ((ta >> 24) & 0xFF));
-  const unsigned mo = (unsigned)(((ta >> 40) & 0xFF) * 10 + ((ta >> 48) & 0xFF));
-  const unsigned dd = (unsigned)((tb & 0xFF) * 10 + ((tb >> 8) & 0xFF));
-  const unsigned hh = (unsigned)(((tb >> 24) & 0xFF) * 10 + ((tb >> 32) & 0xFF));
-  const unsigned mi = (unsigned)(((tb >> 48) & 0xFF) * 10 + (tb >> 56));
-  const unsigned ss = (unsigned)(((tc >> 8) & 0xFF) * 10 + ((tc >> 16) & 0xFF));
+  // digit bytes are 0..9 and other bytes 0, so x*10 + (x>>8) puts 10*d[i]+d[i+1] in byte i without carries
+  const u64 pa = ta * 10 + (ta >> 8), pb = tb * 10 + (tb >> 8), pc = tc * 10 + (tc >> 8);
+  const unsigned y = (unsigned)(pa & 0xFF) * 100 + (unsigned)((pa >> 16) & 0xFF);
+  const unsigned mo = (unsigned)((pa >> 40) & 0xFF);
+  const unsigned dd = (unsigned)(pb & 0xFF);
+  const unsigned hh = (unsigned)((pb >> 24) & 0xFF);
+  const unsigned mi = (unsigned)((pb >> 48) & 0xFF);
+  const unsigned ss = (unsigned)((pc >> 8) & 0xFF);
   if ((mo - 1u > 11u) | (dd == 0) | (hh > 23) | (mi > 59) | (ss > 59)) return false;
   i64 days;
   unsigned yi = y - (unsigned)YBASE;
@@ -1088,9 +1090,9 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
     u32 q = (u32)(h1 >> (64 - QBITS));
     u64 ekey = (h1 << QBITS) | (crc & qmask);
     if (ekey == 0) ekey = 1;
-    i64 ingms;
+    i64 ingsec;
     u32 ing = INVALID;
-    if (parse_f12(fl[3].p, fl[3].n, ingms)) ing = (u32)(ingms / 1000);
+    if (fl[3].n == 20 && fl[3].p[19] == 'Z' && dt19(fl[3].p, ingsec)) ing = (u32)ingsec;
     // validate
     bool valid = fl[1].n > 0 && fl[5].n > 0;
     i64 ts = 0;
