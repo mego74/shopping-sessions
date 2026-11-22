@@ -838,9 +838,9 @@ struct alignas(64) Strm {
   u32 fill = 0;
   inline u32 push_wc(const T& v, Arena<T>& a, T* line, u32 own = 0) {
     static_assert(sizeof(T) == 16, "wc push needs 16-byte records");
-#if !defined(__x86_64__) || defined(NOWC)
+#if !defined(__x86_64__) || !defined(USEWC)
     (void)line;
-    return push(v, a, own);  // no streaming stores: plain scatter is faster
+    return push(v, a, own);  // plain stores measured faster than streaming stores on Intel and AMD
 #endif
     if (fill == 0 && UNLIKELY(wp == we)) {
       cur = a.alloc(own);
