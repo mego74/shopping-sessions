@@ -1,3 +1,5 @@
-oldflush -DOLDFLUSH
-olddedup -DOLDDEDUP
-notsse -DNOTSSE
+psort -DPSORT
+pend16 -DPEND=16
+pend64 -DPEND=64
+cun8 -DCUNROLL=8
+cun5 -DCUNROLL=5
