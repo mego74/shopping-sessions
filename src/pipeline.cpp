@@ -24,6 +24,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/uio.h>
 #include <unistd.h>
 
 typedef uint8_t u8;
@@ -2610,22 +2611,24 @@ struct ColOut {
   Out data;
   u32 nvals = 0;
   u64 offset = 0, size = 0;
+  const char* ext = nullptr;  // values already laid out elsewhere (PLAIN fixed-width arrays): written in place
+  size_t extn = 0;
+  const char* ptr() const { return ext ? ext : data.b.data(); }
+  size_t len() const { return ext ? extn : data.size(); }
 };
 
 static void write_parquet(const std::string& path, const std::vector<ColDef>& defs, std::vector<ColOut>& cols,
                           u64 nrows) {
-  Out f;
-  size_t est = 8;
-  for (auto& c : cols) est += c.data.size() + 64;
-  f.b.reserve(est + 4096);
-  f.put("PAR1", 4);
+  // column chunks are written in place with writev: PAR1, then (page header, values) per column, then the footer
+  std::vector<Out> hdr(cols.size());
+  u64 off = 4;
   for (size_t ci = 0; ci < cols.size(); ci++) {
     ColOut& c = cols[ci];
-    Out h;
+    Out& h = hdr[ci];
     Thr t(h);
     t.i32f(1, 0);
-    t.i32f(2, (i32)c.data.size());
-    t.i32f(3, (i32)c.data.size());
+    t.i32f(2, (i32)c.len());
+    t.i32f(3, (i32)c.len());
     t.sbeg(5);
     t.i32f(1, (i32)nrows);
     t.i32f(2, 0);
@@ -2633,10 +2636,9 @@ static void write_parquet(const std::string& path, const std::vector<ColDef>& de
     t.i32f(4, 3);
     t.send();
     h.u8_(0);
-    c.offset = f.size();
-    f.put(h.b.data(), h.size());
-    f.put(c.data.b.data(), c.data.size());
-    c.size = h.size() + c.data.size();
+    c.offset = off;
+    c.size = h.size() + c.len();
+    off += c.size;
   }
   Out m;
   Thr t(m);
@@ -2695,25 +2697,33 @@ static void write_parquet(const std::string& path, const std::vector<ColDef>& de
   }
   t.binf(6, "shopping-sessions native");
   m.u8_(0);
-  f.put(m.b.data(), m.size());
-  f.u32le((u32)m.size());
-  f.put("PAR1", 4);
-  if (nrows == 0) {
-    // drop the column chunks: rewrite as header + footer only
-    Out g;
-    g.put("PAR1", 4);
-    g.put(m.b.data(), m.size());
-    g.u32le((u32)m.size());
-    g.put("PAR1", 4);
-    f.b.swap(g.b);
-  }
+  Out tail;
+  tail.u32le((u32)m.size());
+  tail.put("PAR1", 4);
+  std::vector<std::pair<const char*, size_t>> parts;
+  parts.push_back({"PAR1", 4});
+  if (nrows != 0)  // with no rows the column chunks are dropped: header + footer only
+    for (size_t ci = 0; ci < cols.size(); ci++) {
+      parts.push_back({hdr[ci].b.data(), hdr[ci].size()});
+      parts.push_back({cols[ci].ptr(), cols[ci].len()});
+    }
+  parts.push_back({m.b.data(), m.size()});
+  parts.push_back({tail.b.data(), tail.size()});
   int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
   if (fd < 0) die(("create " + path).c_str());
-  size_t done = 0;
-  while (done < f.size()) {
-    ssize_t w = write(fd, f.b.data() + done, f.size() - done);
+  std::vector<struct iovec> iov;
+  for (auto& pr : parts)
+    if (pr.second) iov.push_back({(void*)pr.first, pr.second});
+  size_t k = 0;
+  while (k < iov.size()) {
+    ssize_t w = writev(fd, iov.data() + k, (int)std::min<size_t>(iov.size() - k, 512));
     if (w <= 0) die("write");
-    done += (size_t)w;
+    size_t ws = (size_t)w;
+    while (k < iov.size() && ws >= iov[k].iov_len) ws -= iov[k++].iov_len;
+    if (ws) {
+      iov[k].iov_base = (char*)iov[k].iov_base + ws;
+      iov[k].iov_len -= ws;
+    }
   }
   close(fd);
 }
@@ -2764,10 +2774,14 @@ static void write_user_daily(TCtx& W, const std::string& path) {
       o += 4 + len;
     }
   }
-  cols[1].data.put(W.o_day.data(), n * 4);
-  cols[2].data.put(W.o_sess.data(), n * 4);
-  cols[3].data.put(W.o_ev.data(), n * 4);
-  cols[4].data.put(W.o_rev.data(), n * 8);
+  cols[1].ext = (const char*)W.o_day.data();
+  cols[1].extn = n * 4;
+  cols[2].ext = (const char*)W.o_sess.data();
+  cols[2].extn = n * 4;
+  cols[3].ext = (const char*)W.o_ev.data();
+  cols[3].extn = n * 4;
+  cols[4].ext = (const char*)W.o_rev.data();
+  cols[4].extn = n * 8;
   {
     Out& c5 = cols[5].data;
     u64 ng = (n + 7) / 8;
