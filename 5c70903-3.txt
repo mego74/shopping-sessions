@@ -1,0 +1,304 @@
+commit 5c7090319a2be4bd2b7edfe810e47c10066a5a96
+CPU(s):                                  4
+Model name:                              Intel(R) Xeon(R) 6975P-C
+L2 cache:                                4 MiB (2 instances)
+L3 cache:                                480 MiB (1 instance)
+7.0.0-1016-aws
+thp always [madvise] never
+baseline 94eb5626fa6d9f3640226b739b2f30dff4c7e387
+Ubuntu clang version 21.1.8 (6ubuntu1)
+/tmp/cpgo-2488.profraw
+error: Error in reading profile /tmp/cpgo.profdata: unsupported instrumentation profile format version
+docker current built
+== correctness cand
+36/36 fixtures passed
+MATCH
+== correctness gcc_bin
+36/36 fixtures passed
+MATCH
+== correctness d_current
+36/36 fixtures passed
+MATCH
+AB base wall 2.76 user 9.72 sys 0.92
+AB cand wall 2.68 user 9.61 sys 0.93
+FAIL cpgo rc=127
+env: '/tmp/cpgo': No such file or directory
+env: use -[v]S to pass options in shebang lines
+Command exited with non-zero status 127
+AB cpgo wall 0.00 user 0.00 sys 0.00
+AB gcc_bin wall 2.70 user 9.75 sys 0.87
+AB d_current wall 2.66 user 9.58 sys 0.88
+AB base wall 2.73 user 9.71 sys 0.90
+AB cand wall 2.69 user 9.69 sys 0.90
+FAIL cpgo rc=127
+env: '/tmp/cpgo': No such file or directory
+env: use -[v]S to pass options in shebang lines
+Command exited with non-zero status 127
+AB cpgo wall 0.00 user 0.00 sys 0.00
+AB gcc_bin wall 2.79 user 9.86 sys 0.94
+AB d_current wall 2.74 user 9.63 sys 0.95
+AB base wall 2.72 user 9.77 sys 0.92
+AB cand wall 2.72 user 9.75 sys 0.95
+FAIL cpgo rc=127
+env: '/tmp/cpgo': No such file or directory
+env: use -[v]S to pass options in shebang lines
+Command exited with non-zero status 127
+AB cpgo wall 0.00 user 0.00 sys 0.00
+AB gcc_bin wall 2.76 user 9.98 sys 0.90
+AB d_current wall 2.71 user 9.62 sys 0.97
+AB base wall 2.76 user 9.79 sys 0.99
+AB cand wall 2.72 user 9.77 sys 0.90
+FAIL cpgo rc=127
+env: '/tmp/cpgo': No such file or directory
+env: use -[v]S to pass options in shebang lines
+Command exited with non-zero status 127
+AB cpgo wall 0.00 user 0.00 sys 0.00
+AB gcc_bin wall 2.75 user 9.90 sys 0.91
+AB d_current wall 2.69 user 9.52 sys 0.97
+AB base wall 2.74 user 9.85 sys 0.93
+AB cand wall 2.71 user 9.63 sys 0.99
+FAIL cpgo rc=127
+env: '/tmp/cpgo': No such file or directory
+env: use -[v]S to pass options in shebang lines
+Command exited with non-zero status 127
+AB cpgo wall 0.00 user 0.00 sys 0.00
+AB gcc_bin wall 2.78 user 9.78 sys 0.92
+AB d_current wall 2.67 user 9.53 sys 0.96
+AB base wall 2.73 user 9.77 sys 0.96
+AB cand wall 2.73 user 9.83 sys 0.93
+FAIL cpgo rc=127
+env: '/tmp/cpgo': No such file or directory
+env: use -[v]S to pass options in shebang lines
+Command exited with non-zero status 127
+AB cpgo wall 0.00 user 0.00 sys 0.00
+AB gcc_bin wall 2.74 user 9.79 sys 0.92
+AB d_current wall 2.67 user 9.50 sys 0.95
+AB base wall 2.73 user 9.74 sys 0.92
+-- last base phases
+[    0.06 ms] small tables
+[    2.04 ms] mapped
+[   33.03 ms] links parsed
+[  161.89 ms] links done
+[  161.94 ms] small tables joined
+[ 1897.47 ms] parsed events+clicks
+[ 2078.08 ms] dedup
+[ 2686.34 ms] persons
+  person cpu-ms: group 226.2 scatter 545.0 names 0.0 process 1497.1
+[ 2687.98 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2704.74 ms] released
+AB base wall 2.73 user 9.74 sys 0.92
+AB cand wall 2.70 user 9.71 sys 0.93
+-- last cand phases
+[    0.07 ms] small tables
+[    1.98 ms] mapped
+[   31.82 ms] links parsed
+[  156.11 ms] links done
+[  156.18 ms] small tables joined
+[ 1905.25 ms] parsed events+clicks
+[ 2082.78 ms] dedup
+[ 2660.39 ms] persons
+  person cpu-ms: group 221.1 scatter 529.6 names 0.0 process 1403.6
+[ 2661.95 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2678.51 ms] released
+AB cand wall 2.70 user 9.71 sys 0.93
+FAIL cpgo rc=127
+env: '/tmp/cpgo': No such file or directory
+env: use -[v]S to pass options in shebang lines
+Command exited with non-zero status 127
+AB cpgo wall 0.00 user 0.00 sys 0.00
+-- last cpgo phases
+env: '/tmp/cpgo': No such file or directory
+env: use -[v]S to pass options in shebang lines
+Command exited with non-zero status 127
+AB cpgo wall 0.00 user 0.00 sys 0.00
+AB gcc_bin wall 2.75 user 9.73 sys 0.95
+-- last gcc_bin phases
+[    0.08 ms] small tables
+[    2.00 ms] mapped
+[   32.48 ms] links parsed
+[  155.76 ms] links done
+[  155.80 ms] small tables joined
+[ 1930.28 ms] parsed events+clicks
+[ 2136.76 ms] dedup
+[ 2711.75 ms] persons
+  person cpu-ms: group 222.2 scatter 521.8 names 0.0 process 1392.7
+[ 2713.40 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2729.90 ms] released
+AB gcc_bin wall 2.75 user 9.73 sys 0.95
+AB d_current wall 2.65 user 9.48 sys 0.93
+-- last d_current phases
+[    0.06 ms] small tables
+[    1.95 ms] mapped
+[   31.79 ms] links parsed
+[  157.70 ms] links done
+[  157.75 ms] small tables joined
+[ 1853.05 ms] parsed events+clicks
+[ 2029.07 ms] dedup
+[ 2609.10 ms] persons
+  person cpu-ms: group 223.2 scatter 532.6 names 0.0 process 1407.1
+[ 2610.64 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2627.25 ms] released
+AB d_current wall 2.65 user 9.48 sys 0.93
+SUMMARY base      : median wall 2.730s  min 2.720s  median user 9.75s  ratio 1.000
+SUMMARY cand      : median wall 2.705s  min 2.680s  median user 9.71s  ratio 0.991
+SUMMARY cpgo      : median wall 0.000s  min 0.000s  median user 0.00s  ratio 0.000
+SUMMARY gcc_bin   : median wall 2.750s  min 2.700s  median user 9.79s  ratio 1.007
+SUMMARY d_current : median wall 2.670s  min 2.650s  median user 9.52s  ratio 0.978
+== perf by symbol
+    45.74%  [.] main::$_3::operator()(int) const
+    17.43%  [.] main::$_6::operator()(int) const
+    12.30%  [.] flushE(TCtx&, PendE*, int)
+     6.15%  [.] main::$_4::operator()(int) const
+     2.90%  [k] kernel_init_pages
+     2.22%  [.] flushC(TCtx&, PendC*, int)
+     1.10%  [.] __memmove_avx512_unaligned_erms
+     0.79%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_3>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_3&&)::{lambda()#1}> > >::_M_run()
+     0.73%  [.] id_insert(unsigned long, unsigned long, DenseAlloc&)
+     0.66%  [.] __memcmp_evex_movbe
+     0.65%  [k] asm_exc_page_fault
+     0.63%  [.] main
+     0.63%  [.] links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_0::operator()(int) const
+     0.46%  [k] rep_movs_alternative
+     0.41%  [k] get_mem_cgroup_from_mm
+     0.40%  [.] __memset_avx512_unaligned_erms
+     0.37%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_6>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_6&&)::{lambda()#1}> > >::_M_run()
+     0.34%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_1>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_1&&)::{lambda()#1}> > >::_M_run()
+     0.31%  [k] sync_regs
+     0.30%  [.] write_user_daily(TCtx&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+     0.28%  [k] __rmqueue_pcplist
+     0.27%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_2>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_2&&)::{lambda()#1}> > >::_M_run()
+     0.21%  [k] filemap_map_folio_range
+     0.16%  [k] do_anonymous_page
+     0.16%  [k] folio_remove_rmap_ptes
+     0.15%  [k] __mem_cgroup_charge
+     0.14%  [k] get_and_clear_full_ptes.isra.0
+     0.12%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_5>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_5&&)::{lambda()#1}> > >::_M_run()
+     0.11%  [k] mas_walk
+     0.11%  [k] next_uptodate_folio
+== perf by srcline (top)
+    12.44%  pipeline.cpp:0
+     3.67%  pipeline.cpp:1635
+     2.97%  pipeline.cpp:1255
+     2.86%  kernel_init_pages+58
+     2.24%  ??:0
+     1.78%  pipeline.cpp:387
+     1.74%  pipeline.cpp:243
+     1.62%  pipeline.cpp:893
+     1.60%  stl_vector.h:1264
+     1.47%  pipeline.cpp:1261
+     1.33%  pipeline.cpp:1018
+     1.29%  pipeline.cpp:539
+     1.25%  pipeline.cpp:2562
+     1.19%  pipeline.cpp:2396
+     1.14%  pipeline.cpp:817
+     1.10%  pipeline.cpp:1970
+     1.09%  pipeline.cpp:1266
+     1.07%  pipeline.cpp:203
+     0.90%  pipeline.cpp:2397
+     0.90%  pipeline.cpp:562
+     0.87%  pipeline.cpp:2267
+     0.86%  pipeline.cpp:1710
+     0.85%  pipeline.cpp:177
+     0.81%  pipeline.cpp:1262
+     0.81%  pipeline.cpp:842
+     0.76%  pipeline.cpp:1946
+     0.74%  atomic_base.h:573
+     0.73%  pipeline.cpp:178
+     0.66%  pipeline.cpp:951
+     0.63%  asm_exc_page_fault+0
+     0.63%  pipeline.cpp:524
+     0.60%  pipeline.cpp:337
+     0.59%  pipeline.cpp:958
+     0.57%  pipeline.cpp:563
+     0.56%  pipeline.cpp:1841
+     0.56%  pipeline.cpp:952
+     0.56%  pipeline.cpp:545
+     0.55%  pipeline.cpp:1019
+     0.53%  pipeline.cpp:467
+     0.52%  pipeline.cpp:2335
+     0.51%  pipeline.cpp:891
+     0.51%  pipeline.cpp:2333
+     0.49%  pipeline.cpp:889
+     0.48%  pipeline.cpp:208
+     0.47%  vector.tcc:0
+     0.47%  pipeline.cpp:204
+     0.47%  pipeline.cpp:630
+     0.46%  rep_movs_alternative+74
+     0.44%  pipeline.cpp:849
+     0.44%  pipeline.cpp:544
+     0.43%  pipeline.cpp:1549
+     0.42%  pipeline.cpp:2496
+     0.41%  pipeline.cpp:1587
+     0.41%  pipeline.cpp:957
+     0.40%  pipeline.cpp:1814
+     0.40%  pipeline.cpp:629
+     0.40%  stl_algo.h:0
+     0.37%  pipeline.cpp:887
+     0.37%  pipeline.cpp:1883
+     0.37%  pipeline.cpp:2104
+     0.35%  vector.tcc:114
+     0.34%  pipeline.cpp:1986
+     0.34%  pipeline.cpp:2203
+     0.34%  vector.tcc:119
+     0.33%  pipeline.cpp:664
+     0.32%  pipeline.cpp:660
+     0.32%  pipeline.cpp:2495
+     0.32%  pipeline.cpp:681
+     0.32%  pipeline.cpp:1969
+     0.31%  pipeline.cpp:1651
+     0.31%  stl_vector.h:1119
+     0.30%  pipeline.cpp:947
+     0.29%  pipeline.cpp:2422
+     0.29%  pipeline.cpp:1978
+     0.29%  pipeline.cpp:1096
+     0.29%  pipeline.cpp:1797
+     0.29%  pipeline.cpp:210
+     0.29%  pipeline.cpp:202
+     0.28%  pipeline.cpp:659
+     0.27%  atomic_base.h:0
+     0.27%  pipeline.cpp:665
+     0.27%  pipeline.cpp:888
+     0.27%  pipeline.cpp:1934
+     0.27%  pipeline.cpp:2494
+     0.27%  pipeline.cpp:526
+     0.26%  pipeline.cpp:1782
+     0.26%  pipeline.cpp:422
+     0.25%  atomic_base.h:501
+     0.25%  pipeline.cpp:2331
+     0.25%  pipeline.cpp:2266
+     0.25%  pipeline.cpp:534
+     0.24%  pipeline.cpp:835
+     0.24%  pipeline.cpp:631
+     0.24%  pipeline.cpp:2201
+     0.23%  pipeline.cpp:1977
+     0.22%  pipeline.cpp:843
+     0.22%  pipeline.cpp:644
+     0.21%  stl_algobase.h:1509
+     0.21%  pipeline.cpp:920
+     0.21%  pipeline.cpp:1650
+     0.21%  stl_algobase.h:0
+     0.21%  sync_regs+30
+     0.21%  pipeline.cpp:2105
+     0.20%  pipeline.cpp:2486
+     0.20%  pipeline.cpp:2519
+     0.20%  pipeline.cpp:2101
+     0.20%  pipeline.cpp:1824
+     0.20%  pipeline.cpp:2107
+     0.20%  pipeline.cpp:890
+     0.20%  pipeline.cpp:832
+     0.19%  pipeline.cpp:388
+     0.19%  __rmqueue_pcplist+103
+     0.19%  pipeline.cpp:531
+     0.19%  atomic_base.h:536
+     0.18%  pipeline.cpp:1790
+     0.18%  pipeline.cpp:2332
+     0.17%  filemap_map_folio_range+208
+     0.17%  pipeline.cpp:1847
+     0.17%  new_allocator.h:191
+     0.17%  pipeline.cpp:168
+PSTAT base instructions:u=54437M cycles:u=37039M branch-misses:u=244M instructions:k=1540M cycles:k=3557M 
+PSTAT cand instructions:u=54456M cycles:u=36950M branch-misses:u=235M instructions:k=1517M cycles:k=3566M 
