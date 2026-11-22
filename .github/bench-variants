@@ -1,5 +1,4 @@
-psort -DPSORT
-pend16 -DPEND=16
-pend64 -DPEND=64
-cun8 -DCUNROLL=8
-cun5 -DCUNROLL=5
+packsc -DPACKSC
+ddpf8 -DDDPF=8
+ddpf16 -DDDPF=16
+pack_dd8 -DPACKSC -DDDPF=8

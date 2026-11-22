@@ -1292,7 +1292,7 @@ struct TCtx {
   u64 n_ev_lines = 0, n_ev_valid = 0, n_ck_valid = 0;
   // dedup scratch
   Buf<ERec> dtab;
-  Buf<u64> dkey, dval;
+  Buf<u64> dkey, dval, tl2;
   std::vector<std::vector<u64>> kills;  // per person partition: (thread << 32 | arena index) of losing copies
   std::vector<u64> klist;               // losing copies found while parsing: thread << 32 | arena index
   // person scratch
@@ -1879,6 +1879,9 @@ static void dedup_partition(TCtx& W, u32 q) {
       u32 cnt = st.bcount(b);
       for (u32 k = 0; k < cnt; k++) {
         const ERec& e = r[k];
+#ifdef DDPF
+        if (k + DDPF < cnt) __builtin_prefetch(&tab[(r[k + DDPF].key >> (64 - lg)) & mask], 1);
+#endif
         u64 i = (e.key >> (64 - lg)) & mask;
 #ifdef SPLITDEDUP
         for (;;) {
@@ -2277,12 +2280,22 @@ static void person_partition(TCtx& W, u32 p) {
         std::sort(a, a + m);
     }
 #else
+#ifdef PACKSC
+    // one 8-byte record per event (time, local person) instead of two parallel arrays
+    W.tl2.ensure(live + 1);
+    u64* tl = W.tl2.p;
+    (void)t2;
+    (void)l2;
+    for (size_t i = 0; i < live; i++) tl[bcnt[tts[i] >> 20]++] = ((u64)tlp[i] << 32) | tts[i];
+    for (size_t i = 0; i < live; i++) ev[L[tl[i] >> 32].fill++] = (u32)tl[i];
+#else
     for (size_t i = 0; i < live; i++) {
       u32 d = bcnt[tts[i] >> 20]++;
       t2[d] = tts[i];
       l2[d] = tlp[i];
     }
     for (size_t i = 0; i < live; i++) ev[L[l2[i]].fill++] = t2[i];
+#endif
     for (u32 lp : act) L[lp].fill -= L[lp].n;  // back to the start offset
 #endif
   }
