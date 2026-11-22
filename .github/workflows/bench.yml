@@ -39,6 +39,17 @@ jobs:
           if [ -f .github/bench-variants ]; then while read -r name flags; do [ -z "$name" ] && continue
             $CXX $flags -o /tmp/$name src/pipeline.cpp && echo -n " $name" >> /tmp/bins; echo "variant $name: $flags" | tee -a $R; done < .github/bench-variants; fi
           tr -d '\n' < /tmp/bins > /tmp/bins2; echo >> /tmp/bins2; cat /tmp/bins2
+      - name: Correctness gate (scorer build flags)
+        run: |
+          R=results/$(git rev-parse --short HEAD).txt
+          cd /tmp && curl -sSL -o st.zip https://www.joinbuilders.org/buildathon/tracks/shopping-sessions/files/starter-duckdb.zip && unzip -q -o st.zip -d st
+          curl -sSL -o da.zip https://www.joinbuilders.org/buildathon/tracks/shopping-sessions/files/dev-answer.zip && unzip -q -o da.zip -d da
+          pip install -q polars pyarrow >/dev/null 2>&1 || pip install -q --break-system-packages polars pyarrow >/dev/null 2>&1
+          /tmp/generator/target/release/generate --seed 1 --events 1000000 --clicks 250000 --output /tmp/dev >/dev/null
+          SD=$(dirname $(find /tmp/st -name run_fixtures.py | head -1)); FX=$(find /tmp/st -type d -name fixtures | head -1); DA=$(dirname $(find /tmp/da -name user_daily.csv | head -1))
+          cd $GITHUB_WORKSPACE
+          { echo "== correctness"; NCPU=4 python3 $SD/run_fixtures.py $FX -- /tmp/cand | tail -1
+            rm -rf /tmp/devout; NCPU=4 /tmp/cand /tmp/dev /tmp/devout && (cd $SD && python3 compare.py /tmp/devout $DA | tail -1); } 2>&1 | tee -a $R
       - name: A/B timing
         run: |
           R=results/$(git rev-parse --short HEAD).txt

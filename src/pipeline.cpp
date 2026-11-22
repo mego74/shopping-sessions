@@ -375,7 +375,13 @@ static inline void block_masks3(const char* p, u64& cm, u64& nm, u64& qm) {
 #endif
 }
 
-static inline u32 ctz_any(u64 x) { return x ? (u32)__builtin_ctzll(x) : 0; }
+static AI u32 ctz_any(u64 x) {  // any value is fine for x == 0
+#if defined(__BMI__)
+  return (u32)_tzcnt_u64(x);
+#else
+  return x ? (u32)__builtin_ctzll(x) : 0;
+#endif
+}
 
 static const u32 FLAT_W = 16384;  // window bytes
 struct Flat {
@@ -461,7 +467,7 @@ static inline void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line
         u32* oq = FL.nlq + nn;
         u64 t = nm;
         for (int i = 0; i < 2; i++) {
-          u32 bit = t ? (u32)__builtin_ctzll(t) : 0;
+          const u32 bit = ctz_any(t) & 63;
           o[i] = (off + bit) | (u32)(((qa >> bit) & 1) << 30) | (u32)(((qb >> bit) & 1) << 31);
           oq[i] = cq + (u32)__builtin_popcountll(qm & ((1ULL << bit) - 1));
           t &= t - 1;
@@ -1169,6 +1175,9 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
 }
 
 // ---------------------------------------------------------------- events & clicks parse
+#ifndef PEND
+#define PEND 16
+#endif
 struct PendE {
   u64 huid, np, ekey;
   u32 ts, xp, ing, q;  // xp: category<<24 | price for purchases, 0xFF<<24 otherwise
@@ -1225,19 +1234,19 @@ static AI u32 person_of(TCtx& W, u64 h, u64 np) {
 static inline void flushE(TCtx& W, PendE* pe, int n) {
   const u32 tid = (u32)W.id << TSHIFT;
   const u32 lim = 1u << TSHIFT;
+  u32 pid[PEND], idx[PEND];
+  for (int i = 0; i < n; i++) pid[i] = person_of(W, pe[i].huid, pe[i].np);
+  for (int i = 0; i < n; i++) idx[i] = W.ps.push(pid[i] & PMASK, {pid[i], pe[i].ts}, W.pa);
   for (int i = 0; i < n; i++) {
-    const u32 pid = person_of(W, pe[i].huid, pe[i].np);
-    const u32 p = pid & PMASK;
-    const u32 idx = W.ps.push(p, {pid, pe[i].ts}, W.pa);
-    if (UNLIKELY(idx >= lim - 1)) die("too many records per thread");
+    if (UNLIKELY(idx[i] >= lim - 1)) die("too many records per thread");
     if (UNLIKELY((pe[i].xp >> 24) != 0xFF)) {
-      const u32 b = idx / BLK;
-      W.us.push(p, {pid, pe[i].ts, pe[i].xp, W.pa.ord[b] * BLK + idx % BLK}, W.ua);
+      const u32 b = idx[i] / BLK;
+      W.us.push(pid[i] & PMASK, {pid[i], pe[i].ts, pe[i].xp, W.pa.ord[b] * BLK + idx[i] % BLK}, W.ua);
     }
-#ifndef DIAG_NOEREC
-    W.es.push(pe[i].q, {pe[i].ekey, pe[i].ing, tid | idx}, W.ea);
-#endif
   }
+#ifndef DIAG_NOEREC
+  for (int i = 0; i < n; i++) W.es.push(pe[i].q, {pe[i].ekey, pe[i].ing, tid | idx[i]}, W.ea);
+#endif
 }
 static inline void flushC(TCtx& W, PendC* pc, int n) {
   for (int i = 0; i < n; i++) {
@@ -1249,6 +1258,7 @@ static inline void flushC(TCtx& W, PendC* pc, int n) {
 #ifndef PEND
 #define PEND 16
 #endif
+
 static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
   PendE pend[PEND];
   int npd = 0;
@@ -2240,7 +2250,7 @@ int main(int argc, char** argv) {
   }
   logt("mapped");
 
-  links_phase(lkf, (evbytes / 85 + ckbytes / 45) / 16 + 4096);
+  links_phase(lkf, (evbytes / 85 + ckbytes / 45) / 24 + 4096);
   small_thr.join();
   logt("small tables joined");
 
