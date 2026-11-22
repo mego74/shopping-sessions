@@ -1998,7 +1998,32 @@ static void process_person(TCtx& W, u64 nameref, const u32* ev, u32 n, const CK*
   u32* sc = W.s_cnt.p;
   // sessions: a boundary can only fall between buckets (bucket < GAP)
   u32 ns = 0, cur_max = 0;
+#ifdef PSORT
+  // events are fully sorted: a session starts wherever the gap to the previous event exceeds GAP
+  {
+    u32 prev = ev[0], start = 0;
+    ss[0] = ev[0];
+    sd[0] = (u16)((WSOFF + ev[0]) / (u64)DAYMS);
+    sr[0] = 0;
+    ns = 1;
+    for (u32 k = 1; k < n; k++) {
+      const u32 ts = ev[k];
+      if (UNLIKELY(ts - prev > GAP)) {
+        sc[ns - 1] = k - start;
+        start = k;
+        ss[ns] = ts;
+        sd[ns] = (u16)((WSOFF + ts) / (u64)DAYMS);
+        sr[ns] = 0;
+        ns++;
+      }
+      prev = ts;
+    }
+    sc[ns - 1] = n - start;
+  }
+  for (u32 k = n; k < n;) {
+#else
   for (u32 k = 0; k < n;) {
+#endif
     const u32 b = ev[k] >> 20;
     u32 ke = k, bmin = 0xFFFFFFFFu, bmax = 0;
     do {
