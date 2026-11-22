@@ -1,3 +1,3 @@
-oldroot -DOLDROOT
+oldcnt -DOLDCNT
+nocres -DNOCRES
 nopack -DNOPACKSC
-noddpf -DDDPF=0
