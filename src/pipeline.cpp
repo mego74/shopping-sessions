@@ -1413,11 +1413,12 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
   std::atomic<size_t> next{0};
   par_run([&](int t) {
     TCtx& W = TC[t];
-    Fld fl[2];
     for (;;) {
       size_t ci = next.fetch_add(1);
       if (ci >= ch.size()) break;
       const MFile& f = lf[ch[ci].file];
+#ifdef OLDLINKS
+      Fld fl[2];
       u64 ls = align_start(f, ch[ci].s), e = ch[ci].e;
       if (ls >= e) continue;
       Scanner sc;
@@ -1430,6 +1431,13 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
         W.lrecs.push_back({hstr(fl[0].p, fl[0].n), hstr(fl[1].p, fl[1].n), encp(fl[0].p, fl[0].n),
                            encp(fl[1].p, fl[1].n)});
       }
+#else
+      for_lines<2>(f, ch[ci].s, ch[ci].e, *W.flat, [&](const LineF& fl) __attribute__((always_inline)) {
+        if (fl[0].n == 0 || fl[1].n == 0) return;
+        W.lrecs.push_back({hstr(fl[0].p, fl[0].n), hstr(fl[1].p, fl[1].n), encp(fl[0].p, fl[0].n),
+                           encp(fl[1].p, fl[1].n)});
+      });
+#endif
     }
   });
   u64 nl = 0;
