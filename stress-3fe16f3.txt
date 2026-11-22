@@ -1,0 +1,48 @@
+Model name:                              AMD EPYC 9V45 96-Core Processor
+built from Dockerfile
+gcc build exit 0
+exit 0
+[    0.07 ms] small tables
+[    2.88 ms] mapped
+[   27.86 ms] links parsed
+[  110.55 ms] links done
+[  110.59 ms] small tables joined
+[ 1324.27 ms] parsed events+clicks
+[ 1463.40 ms] dedup
+  t0 user_daily rows=1651044 build=37.9ms write=48.0ms
+  t1 user_daily rows=1649244 build=38.4ms write=51.2ms
+  t3 user_daily rows=1665487 build=38.5ms write=54.4ms
+  t2 user_daily rows=1662392 build=38.7ms write=59.6ms
+[ 1954.50 ms] persons
+[ 1956.21 ms] written
+event lines 64770937 valid-copies 63116505 clicks 15271464 user_daily rows 6628167 P=10 Q=12
+[ 1972.76 ms] released
+RUN ncpu=4 wall 2.02 user 6.88 sys 0.85 maxrss 9455644KB
+exit 0
+[    0.06 ms] small tables
+[    4.68 ms] mapped
+[   31.88 ms] links parsed
+[  114.40 ms] links done
+[  114.44 ms] small tables joined
+[ 1374.05 ms] parsed events+clicks
+[ 1516.37 ms] dedup
+  t5 user_daily rows=536385 build=32.5ms write=23.0ms
+  t3 user_daily rows=470314 build=28.9ms write=23.0ms
+  t0 user_daily rows=1061534 build=25.5ms write=38.0ms
+  t7 user_daily rows=580661 build=33.3ms write=32.1ms
+  t6 user_daily rows=569289 build=44.5ms write=21.2ms
+  t2 user_daily rows=1259428 build=25.3ms write=49.8ms
+  t4 user_daily rows=1106051 build=70.9ms write=24.5ms
+  t1 user_daily rows=1044505 build=70.4ms write=25.2ms
+[ 2025.89 ms] persons
+[ 2027.30 ms] written
+event lines 64770937 valid-copies 63116505 clicks 15271464 user_daily rows 6628167 P=10 Q=12
+[ 2044.45 ms] released
+RUN ncpu=8 wall 2.10 user 7.11 sys 0.93 maxrss 9539868KB
+rows user_daily 6628167 campaign_daily 28014
+ncpu4 == ncpu8: True True
+dockerfile build == gcc build: True True
+sessions equal: True 10014261 10014261
+revenue equal: True
+assisted >= credited non-organic: True
+dup keys: 0 0
