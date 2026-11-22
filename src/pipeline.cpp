@@ -672,7 +672,6 @@ static int ND;               // number of days
 static int PBITS = 8, QBITS = 8;
 static u32 TSHIFT = 29;
 static const u32 INVALID = 0xFFFFFFFFu;
-static const u64 DEAD = 1;
 
 static SMap PRODS;                // product -> index
 static std::vector<u8> PRODCAT;   // product index -> cat index
@@ -697,9 +696,13 @@ static inline u64 id_home(u64 h) { return (u64)(((__uint128_t)h * IDCAP) >> 64);
 // ---------------------------------------------------------------- records & arenas
 struct PRec {
   u64 pk;
-  u64 packed;  // ts_rel<<32 | X<<24 | price   X=0xFF non-purchase else cat
-  u64 np;      // name ptr (0 = linked, look up), DEAD = deduped away
+  u64 packed;  // ts_rel<<32 | X<<24 | price   X=0xFF non-purchase, 0xFE deduped away, else cat
 };
+struct NRec {  // name of an unlinked person (its own user_id)
+  u64 pk;
+  u64 np;
+};
+static const u64 XMASK = 0xFFULL << 24, XDEAD = 0xFEULL << 24;
 struct ERec {
   u64 key;
   u32 ing;
@@ -776,6 +779,9 @@ struct TCtx {
   int id = 0;
   Flat* flat = new Flat;
   Arena<PRec> pa;
+  Arena<NRec> na;
+  std::vector<Strm<NRec>> ns;
+  u64* ncache = (u64*)calloc(8192, sizeof(u64));
   Arena<ERec> ea;
   Arena<CRec> ca;
   std::vector<Strm<PRec>> ps;
@@ -993,9 +999,15 @@ static inline void flushE(TCtx& W, PendE* pe, int n) {
     u64 pk;
     bool linked;
     lookup_person(pe[i].huid, pk, linked);
-    u64 np = (linked && pk != pe[i].huid) ? 0 : pe[i].np;
     u32 p = (u32)(pk >> (64 - PBITS));
-    u32 idx = W.ps[p].push({pk, pe[i].packed, np}, W.pa);
+    if (!linked) {
+      u64& c = W.ncache[(pk >> 20) & 8191];
+      if (c != pk) {
+        c = pk;
+        W.ns[p].push({pk, pe[i].np}, W.na);
+      }
+    }
+    u32 idx = W.ps[p].push({pk, pe[i].packed}, W.pa);
     if (UNLIKELY(idx >= lim - 1)) die("too many records per thread");
     W.es[pe[i].q].push({pe[i].ekey, pe[i].ing, tid | idx}, W.ea);
   }
@@ -1115,7 +1127,8 @@ static void dedup_partition(TCtx& W, u32 q) {
   auto kill = [&](u32 g) {
     if (g == INVALID) return;
     u32 t = g >> TSHIFT, idx = g & ((1u << TSHIFT) - 1);
-    TC[t].pa.at(idx)->np = DEAD;
+    PRec* r = TC[t].pa.at(idx);
+    r->packed = (r->packed & ~XMASK) | XDEAD;
   };
   for (int t = 0; t < NT; t++) {
     Strm<ERec>& st = TC[t].es[q];
@@ -1425,7 +1438,7 @@ static void person_partition(TCtx& W, u32 p) {
       u32 cnt = st.bcount(b);
       for (u32 i = 0; i < cnt; i++) {
         const PRec& x = r[i];
-        if (x.np == DEAD) continue;
+        if ((x.packed & XMASK) == XDEAD) continue;
         u64 j = (x.pk >> 20) & mask;
         u32 lp;
         for (;;) {
@@ -1446,7 +1459,6 @@ static void person_partition(TCtx& W, u32 p) {
         }
         Pers& P = PS[lp];
         P.cnt++;
-        if (P.np == 0 && x.np) P.np = x.np;
         lpo[k] = lp;
         tmp[k] = x.packed;
         k++;
@@ -1454,6 +1466,25 @@ static void person_partition(TCtx& W, u32 p) {
     }
   }
   size_t live = k;
+  for (int t = 0; t < NT; t++) {
+    Strm<NRec>& st = TC[t].ns[p];
+    for (size_t b = 0; b < st.blocks.size(); b++) {
+      const NRec* r = TC[t].na.blk(st.blocks[b]);
+      u32 cnt = st.bcount(b);
+      for (u32 i = 0; i < cnt; i++) {
+        u64 j = (r[i].pk >> 20) & mask;
+        for (;;) {
+          u64 kk = tk[j];
+          if (kk == r[i].pk) {
+            PS[tv[j]].np = r[i].np;
+            break;
+          }
+          if (kk == 0) break;
+          j = (j + 1) & mask;
+        }
+      }
+    }
+  }
   double tg1 = nowd();
   u32 off = 0;
   for (Pers& P : PS) {
@@ -1993,6 +2024,7 @@ int main(int argc, char** argv) {
   for (int t = 0; t < NT; t++) {
     TC[t].id = t;
     TC[t].ps.resize(1u << PBITS);
+    TC[t].ns.resize(1u << PBITS);
     TC[t].cs.resize(1u << PBITS);
     TC[t].es.resize(1u << QBITS);
   }
