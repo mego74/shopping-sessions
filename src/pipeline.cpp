@@ -1340,6 +1340,8 @@ struct TCtx {
   double tm[8] = {0, 0, 0, 0, 0, 0, 0, 0};
   // outputs
   std::vector<char> names;
+  Buf<char> nbuf;  // person names of this thread's user_daily rows, back to back
+  size_t nlen = 0;
   std::vector<u64> o_name;  // (offset into names)<<16 | len
   std::vector<i32> o_day, o_sess, o_ev;
   std::vector<i64> o_rev;
@@ -2465,8 +2467,19 @@ static void person_partition(TCtx& W, u32 p) {
     const u64 np = NAMEP[(lp << PBITS) | p];
     const char* sp = decp(np);
     const u32 sn = decn(np);
+#ifdef OLDNAMES
     const u64 nref = ((u64)W.names.size() << 16) | sn;
     W.names.insert(W.names.end(), sp, sp + sn);
+#else
+    const u64 nref = ((u64)W.nlen << 16) | sn;
+    W.nbuf.ensure(W.nlen + sn + 64);
+    char* nd = W.nbuf.p + W.nlen;
+    if (LIKELY(sn <= 16))
+      memcpy(nd, sp, 16);  // over-copies within the padded input and the buffer slack
+    else
+      memcpy(nd, sp, sn);
+    W.nlen += sn;
+#endif
     const LPS& P = L[lp];
     process_person(W, nref, ev + P.fill, P.n, ck + P.coff, P.ccnt, ua + P.uoff, P.ucnt);
   }
@@ -2703,7 +2716,11 @@ static void write_user_daily(TCtx& W, const std::string& path) {
     std::vector<char>& b = cols[0].data.b;
     b.resize(tot);
     char* o = b.data();
+#ifdef OLDNAMES
     const char* nb = W.names.data();
+#else
+    const char* nb = W.nbuf.p;
+#endif
     for (size_t i = 0; i < n; i++) {
       u32 len = (u32)(W.o_name[i] & 0xFFFF);
       memcpy(o, &len, 4);
@@ -3007,7 +3024,11 @@ int main(int argc, char** argv) {
         W.o_ev.reserve(est);
         W.o_rev.reserve(est);
         W.o_cat.reserve(est);
+#ifdef OLDNAMES
         W.names.reserve(est * 8);
+#else
+        W.nbuf.ensure(est * 12 + 4096);
+#endif
       }
       W.cs_.assign(cd, CStat{0, 0});
       W.cr_.assign(cd, CRev{0, 0});
