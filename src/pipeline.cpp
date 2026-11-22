@@ -405,7 +405,7 @@ static const u32 FLAT_W = FLATW;  // window bytes
 #define CUNROLL 6
 #endif
 #ifndef INPF
-#define INPF 0
+#define INPF 1024
 #endif
 #ifndef POPRD
 #define POPRD 0
@@ -1045,6 +1045,9 @@ struct alignas(64) Strm {
 
 // A set of output streams (one per partition) sharing an arena. The per-push state of every
 // stream is a 16-byte record in one contiguous array, so scattering touches little cache.
+#ifndef PFW
+#define PFW 0
+#endif
 template <class T>
 struct SHot {
   T* wp;      // next write position; block-aligned (or null) means a new block is needed
@@ -1072,6 +1075,9 @@ struct StreamSet {
     }
     *w = v;
     h.wp = w + 1;
+#if PFW > 0
+    __builtin_prefetch((const char*)w + PFW, 1);  // the stream's next lines are cold (fresh pages)
+#endif
     return h.ibase + (u32)(((uintptr_t)w & (BB - 1)) / sizeof(T));
   }
   static u32 fill_of(const T* wp) {  // records in the last block
@@ -1526,12 +1532,21 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
     W.n_ev_valid += fl[2].n + fl[1].n; return;
 #endif
     u64 h1 = hstr(fl[0].p, fl[0].n);
+#ifdef NOCRC
+    const u32 crc = 0;
+#else
     u32 crc = crcstr(fl[0].p, fl[0].n);
+#endif
 #if STAGE == 2
     W.n_ev_valid += h1 + crc + hstr(fl[1].p, fl[1].n); return;
 #endif
     u32 q = (u32)(h1 >> (64 - QBITS));
+#ifdef NOCRC
+    (void)qmask;
+    u64 ekey = (h1 << QBITS) | (h1 >> (64 - QBITS));  // the 64 hash bits, partition bits last
+#else
     u64 ekey = (h1 << QBITS) | (crc & qmask);
+#endif
     if (ekey == 0) ekey = 1;
     i64 ingsec;
     u32 ing = INVALID;
