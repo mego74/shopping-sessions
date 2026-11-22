@@ -736,6 +736,23 @@ struct Arena {
   inline T* at(u32 idx) const { return chunks[idx / (BLK * CHB)] + idx % (BLK * CHB); }
 };
 
+static inline void stream64(void* dst, const void* src) {
+#if defined(__AVX2__)
+  __m256i a = _mm256_load_si256((const __m256i*)src), b = _mm256_load_si256((const __m256i*)src + 1);
+  _mm256_stream_si256((__m256i*)dst, a);
+  _mm256_stream_si256((__m256i*)dst + 1, b);
+#else
+  memcpy(dst, src, 64);
+#endif
+}
+static inline void store_fence() {
+#if defined(__x86_64__)
+  _mm_sfence();
+#else
+  std::atomic_thread_fence(std::memory_order_seq_cst);
+#endif
+}
+
 template <class T>
 struct Strm {
   T* wp = nullptr;
@@ -753,6 +770,35 @@ struct Strm {
     u32 idx = cur * BLK + (u32)(wp - bp);
     *wp++ = v;
     return idx;
+  }
+  // Write-combining push for 16-byte records: 4 records collect in a 64-byte line buffer
+  // (thread-local, cache resident), then go to the stream as one streaming store.
+  u32 fill = 0;
+  inline u32 push_wc(const T& v, Arena<T>& a, T* line) {
+    static_assert(sizeof(T) == 16, "wc push needs 16-byte records");
+#if !defined(__x86_64__)
+    (void)line;
+    return push(v, a);  // no streaming stores: plain scatter is faster
+#endif
+    if (fill == 0 && UNLIKELY(wp == we)) {
+      cur = a.alloc();
+      blocks.push_back(cur);
+      bp = wp = a.blk(cur);
+      we = wp + BLK;
+    }
+    u32 idx = cur * BLK + (u32)(wp - bp) + fill;
+    line[fill] = v;
+    if (++fill == 4) {
+      stream64(wp, line);
+      wp += 4;
+      fill = 0;
+    }
+    return idx;
+  }
+  inline void flush_wc(const T* line) {
+    for (u32 i = 0; i < fill; i++) wp[i] = line[i];
+    wp += fill;
+    fill = 0;
   }
   size_t count() const { return blocks.empty() ? 0 : (blocks.size() - 1) * (size_t)BLK + (size_t)(wp - bp); }
   inline u32 bcount(size_t i) const { return i + 1 == blocks.size() ? (u32)(wp - bp) : BLK; }
@@ -780,6 +826,8 @@ struct TCtx {
   Flat* flat = new Flat;
   Arena<PRec> pa;
   Arena<NRec> na;
+  PRec* pswc = nullptr;  // per person-partition 64-byte line buffers
+  ERec* eswc = nullptr;  // per event-id-partition line buffers
   std::vector<Strm<NRec>> ns;
   u64* ncache = (u64*)calloc(8192, sizeof(u64));
   Arena<ERec> ea;
@@ -1007,9 +1055,9 @@ static inline void flushE(TCtx& W, PendE* pe, int n) {
         W.ns[p].push({pk, pe[i].np}, W.na);
       }
     }
-    u32 idx = W.ps[p].push({pk, pe[i].packed}, W.pa);
+    u32 idx = W.ps[p].push_wc({pk, pe[i].packed}, W.pa, W.pswc + 4 * (size_t)p);
     if (UNLIKELY(idx >= lim - 1)) die("too many records per thread");
-    W.es[pe[i].q].push({pe[i].ekey, pe[i].ing, tid | idx}, W.ea);
+    W.es[pe[i].q].push_wc({pe[i].ekey, pe[i].ing, tid | idx}, W.ea, W.eswc + 4 * (size_t)pe[i].q);
   }
 }
 static inline void flushC(TCtx& W, PendC* pc, int n) {
@@ -1069,7 +1117,7 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
     W.n_ev_valid += valid + h1 + crc + ts + hstr(fl[1].p, fl[1].n); return;
 #endif
     if (!valid) {
-      W.es[q].push({ekey, ing, INVALID}, W.ea);
+      W.es[q].push_wc({ekey, ing, INVALID}, W.ea, W.eswc + 4 * (size_t)q);
       return;
     }
     W.n_ev_valid++;
@@ -1408,6 +1456,8 @@ static void person_partition(TCtx& W, u32 p) {
   u32* lpo = W.lp_of.p;
   u64* tmp = W.tmp64.p;
   size_t k = 0;
+  u32 bcnt[4096];
+  memset(bcnt, 0, sizeof bcnt);
   auto grow = [&]() {
     size_t nc = cap * 2;
     u64* nk = (u64*)malloc(nc * sizeof(u64));
@@ -1461,6 +1511,7 @@ static void person_partition(TCtx& W, u32 p) {
         P.cnt++;
         lpo[k] = lp;
         tmp[k] = x.packed;
+        bcnt[x.packed >> 52]++;
         k++;
       }
     }
@@ -1500,9 +1551,7 @@ static void person_partition(TCtx& W, u32 p) {
     W.lp2.ensure(live);
     u64* t2 = W.radtmp.p;
     u32* l2 = W.lp2.p;
-    u32 cnt[4096];
-    memset(cnt, 0, sizeof cnt);
-    for (size_t i = 0; i < live; i++) cnt[tmp[i] >> 52]++;
+    u32* cnt = bcnt;
     u32 sum = 0;
     for (int i = 0; i < 4096; i++) {
       u32 c = cnt[i];
@@ -2016,15 +2065,17 @@ int main(int argc, char** argv) {
   {
     double est = (double)evbytes / 85.0;
     int pb = (int)std::lround(std::log2(std::max(1.0, est / 30000.0)));
-    PBITS = std::min(12, std::max(4, pb));
+    PBITS = std::min(11, std::max(4, pb));
     int qb = (int)std::lround(std::log2(std::max(1.0, est / 12000.0)));
-    QBITS = std::min(13, std::max(4, qb));
+    QBITS = std::min(12, std::max(4, qb));
   }
   TC = new TCtx[NT];
   for (int t = 0; t < NT; t++) {
     TC[t].id = t;
     TC[t].ps.resize(1u << PBITS);
     TC[t].ns.resize(1u << PBITS);
+    TC[t].pswc = (PRec*)aligned_alloc(64, (size_t)64 << PBITS);
+    TC[t].eswc = (ERec*)aligned_alloc(64, (size_t)64 << QBITS);
     TC[t].cs.resize(1u << PBITS);
     TC[t].es.resize(1u << QBITS);
   }
@@ -2058,6 +2109,9 @@ int main(int argc, char** argv) {
         else
           clicks_chunk(W, ckf[j.c.file], j.c.s, j.c.e);
       }
+      for (u32 p = 0; p < (1u << PBITS); p++) W.ps[p].flush_wc(W.pswc + 4 * (size_t)p);
+      for (u32 q = 0; q < (1u << QBITS); q++) W.es[q].flush_wc(W.eswc + 4 * (size_t)q);
+      store_fence();
     });
   }
   logt("parsed events+clicks");
@@ -2178,6 +2232,47 @@ int main(int argc, char** argv) {
             (unsigned long long)a, (unsigned long long)b, (unsigned long long)c, (unsigned long long)r, PBITS,
             QBITS);
   }
+#if defined(__linux__)
+  // Process teardown frees every page on one thread; release the big regions in parallel first.
+  {
+    struct Reg {
+      char* p;
+      size_t n;
+    };
+    std::vector<Reg> regs;
+    const size_t CH = (size_t)64 << 20;
+    size_t total = 0;
+    auto add = [&](const void* p, size_t n) {
+      n = (n + 4095) & ~(size_t)4095;
+      total += n;
+      for (size_t o = 0; o < n; o += CH) regs.push_back({(char*)p + o, std::min(CH, n - o)});
+    };
+    for (auto* fs : {&evf, &ckf, &lkf})
+      for (auto& f : *fs) add(f.p, f.n);
+    for (int t = 0; t < NT; t++) {
+      TCtx& W = TC[t];
+      for (int c = 0; c < 2048; c++) {
+        if (W.pa.chunks[c]) add(W.pa.chunks[c], sizeof(PRec) * (size_t)BLK * CHB);
+        if (W.ea.chunks[c]) add(W.ea.chunks[c], sizeof(ERec) * (size_t)BLK * CHB);
+        if (W.ca.chunks[c]) add(W.ca.chunks[c], sizeof(CRec) * (size_t)BLK * CHB);
+        if (W.na.chunks[c]) add(W.na.chunks[c], sizeof(NRec) * (size_t)BLK * CHB);
+      }
+    }
+    add(IDS, IDCAP * sizeof(IdSlot));
+    add(IDP, IDCAP * sizeof(u64));
+    if (total > ((size_t)256 << 20)) {
+      std::atomic<size_t> nx{0};
+      par_run([&](int) {
+        for (;;) {
+          size_t i = nx.fetch_add(1);
+          if (i >= regs.size()) break;
+          madvise(regs[i].p, regs[i].n, MADV_DONTNEED);
+        }
+      });
+    }
+    logt("released");
+  }
+#endif
   fflush(stderr);
   _exit(0);
 }
