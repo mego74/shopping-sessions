@@ -1,0 +1,45 @@
+Model name:                              Intel(R) Xeon(R) 6975P-C
+exit 0
+[    0.11 ms] small tables
+[    4.08 ms] mapped
+[   52.56 ms] links parsed
+[  197.17 ms] links done
+[  197.21 ms] small tables joined
+[ 2145.84 ms] parsed events+clicks
+[ 2307.43 ms] dedup
+  t1 user_daily rows=1644964 build=69.9ms write=59.3ms
+  t0 user_daily rows=1664361 build=71.8ms write=63.8ms
+  t3 user_daily rows=1651095 build=74.0ms write=63.7ms
+  t2 user_daily rows=1667747 build=71.7ms write=65.8ms
+[ 3020.88 ms] persons
+[ 3022.66 ms] written
+event lines 64770937 valid-copies 63116505 clicks 15271464 user_daily rows 6628167 P=10 Q=12
+[ 3039.60 ms] released
+RUN ncpu=4 wall 3.06 user 10.19 sys 1.36 maxrss 9479564KB
+exit 0
+[    0.08 ms] small tables
+[    3.43 ms] mapped
+[   50.89 ms] links parsed
+[  189.67 ms] links done
+[  189.71 ms] small tables joined
+[ 2054.34 ms] parsed events+clicks
+[ 2220.64 ms] dedup
+  t7 user_daily rows=666271 build=30.4ms write=23.7ms
+  t0 user_daily rows=589295 build=47.9ms write=21.2ms
+  t5 user_daily rows=870717 build=24.3ms write=55.4ms
+  t2 user_daily rows=626603 build=49.6ms write=33.1ms
+  t6 user_daily rows=681703 build=39.9ms write=42.8ms
+  t4 user_daily rows=629084 build=56.8ms write=27.9ms
+  t1 user_daily rows=1218272 build=67.0ms write=44.0ms
+  t3 user_daily rows=1346222 build=70.5ms write=50.0ms
+[ 2927.06 ms] persons
+[ 2929.15 ms] written
+event lines 64770937 valid-copies 63116505 clicks 15271464 user_daily rows 6628167 P=10 Q=12
+[ 2946.55 ms] released
+RUN ncpu=8 wall 2.98 user 10.42 sys 1.17 maxrss 9587852KB
+rows user_daily 6628167 campaign_daily 28014
+ncpu4 == ncpu8: True True
+sessions equal: True 10014261 10014261
+revenue equal: True
+assisted >= credited non-organic: True
+dup keys: 0 0
