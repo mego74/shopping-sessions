@@ -42,6 +42,9 @@ static const i64 DAYMS = 86400000LL;
 static const u32 GAP = 1800000u;
 static const u32 WEEK = 604800000u;
 
+#ifdef PGO_GEN
+extern "C" void __gcov_dump(void);
+#endif
 static double T0;
 static double nowd() {
   return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -2753,5 +2756,8 @@ int main(int argc, char** argv) {
   }
 #endif
   fflush(stderr);
+#ifdef PGO_GEN
+  __gcov_dump();  // _exit skips the normal profile write-out
+#endif
   _exit(0);
 }

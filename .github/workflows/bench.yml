@@ -45,7 +45,7 @@ jobs:
           # PGO variant: instrumented build trained on a 1M-event dev set, then rebuilt with the profile
           /tmp/generator/target/release/generate --seed 3 --events 1000000 --clicks 250000 --output /tmp/train >/dev/null
           mkdir -p /tmp/pgo && cd /tmp/pgo && cp $GITHUB_WORKSPACE/src/pipeline.cpp . 
-          $CXX -fprofile-generate -fprofile-update=atomic -c -o pipeline.o pipeline.cpp && $CXX -fprofile-generate -o /tmp/pgogen pipeline.o
+          $CXX -DPGO_GEN -fprofile-generate -fprofile-update=atomic -c -o pipeline.o pipeline.cpp && $CXX -fprofile-generate -o /tmp/pgogen pipeline.o
           rm -rf /tmp/tout; NCPU=4 /tmp/pgogen /tmp/train /tmp/tout && rm -rf /tmp/tout && NCPU=4 /tmp/pgogen /tmp/train /tmp/tout; ls -la /tmp/pgo | tee -a $GITHUB_WORKSPACE/$R
           $CXX -fprofile-use -fprofile-correction -c -o pipeline.o pipeline.cpp 2>&1 | head -5 | tee -a $GITHUB_WORKSPACE/$R; $CXX -o /tmp/pgo_bin pipeline.o && echo -n " pgo_bin" >> /tmp/bins
           cd $GITHUB_WORKSPACE
