@@ -330,6 +330,159 @@ static inline bool parse_line(Scanner& sc, const char* base, Fld* f, u64 ls, u64
   }
 }
 
+// comma / newline / quote masks for 64 bytes at p (64-byte aligned)
+static inline void block_masks3(const char* p, u64& cm, u64& nm, u64& qm) {
+#if defined(__AVX2__)
+  __m256i a = _mm256_load_si256((const __m256i*)p);
+  __m256i b = _mm256_load_si256((const __m256i*)(p + 32));
+  const __m256i C = _mm256_set1_epi8(','), N = _mm256_set1_epi8('\n'), Q = _mm256_set1_epi8('"');
+  cm = (u64)(u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(a, C)) |
+       ((u64)(u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(b, C)) << 32);
+  nm = (u64)(u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(a, N)) |
+       ((u64)(u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(b, N)) << 32);
+  qm = (u64)(u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(a, Q)) |
+       ((u64)(u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(b, Q)) << 32);
+#elif defined(__aarch64__)
+  const uint8x16_t C = vdupq_n_u8(','), N = vdupq_n_u8('\n'), Q = vdupq_n_u8('"');
+  static const uint8_t bm[16] = {1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128};
+  const uint8x16_t B = vld1q_u8(bm);
+  uint8x16_t tc[4], tn[4], tq[4];
+  for (int i = 0; i < 4; i++) {
+    uint8x16_t a = vld1q_u8((const uint8_t*)p + 16 * i);
+    tc[i] = vandq_u8(vceqq_u8(a, C), B);
+    tn[i] = vandq_u8(vceqq_u8(a, N), B);
+    tq[i] = vandq_u8(vceqq_u8(a, Q), B);
+  }
+  uint8x16_t c0 = vpaddq_u8(vpaddq_u8(tc[0], tc[1]), vpaddq_u8(tc[2], tc[3]));
+  uint8x16_t n0 = vpaddq_u8(vpaddq_u8(tn[0], tn[1]), vpaddq_u8(tn[2], tn[3]));
+  uint8x16_t q0 = vpaddq_u8(vpaddq_u8(tq[0], tq[1]), vpaddq_u8(tq[2], tq[3]));
+  uint8x16_t cn = vpaddq_u8(c0, n0);
+  uint8x16_t qq = vpaddq_u8(q0, q0);
+  cm = vgetq_lane_u64(vreinterpretq_u64_u8(cn), 0);
+  nm = vgetq_lane_u64(vreinterpretq_u64_u8(cn), 1);
+  qm = vgetq_lane_u64(vreinterpretq_u64_u8(qq), 0);
+#else
+  const __m128i C = _mm_set1_epi8(','), N = _mm_set1_epi8('\n'), Q = _mm_set1_epi8('"');
+  cm = nm = qm = 0;
+  for (int i = 0; i < 4; i++) {
+    __m128i a = _mm_load_si128((const __m128i*)(p + 16 * i));
+    cm |= (u64)(u32)_mm_movemask_epi8(_mm_cmpeq_epi8(a, C)) << (16 * i);
+    nm |= (u64)(u32)_mm_movemask_epi8(_mm_cmpeq_epi8(a, N)) << (16 * i);
+    qm |= (u64)(u32)_mm_movemask_epi8(_mm_cmpeq_epi8(a, Q)) << (16 * i);
+  }
+#endif
+}
+
+static inline u32 ctz_any(u64 x) { return x ? (u32)__builtin_ctzll(x) : 0; }
+
+static const u32 FLAT_W = 16384;  // window bytes
+struct Flat {
+  u32 com[FLAT_W + 64];
+  u32 nl[FLAT_W + 64];
+  u32 nlq[FLAT_W + 64];
+};
+
+static inline u64 align_start(const MFile& f, u64 s);
+
+// Calls on_line(Fld*) for every well-formed NF-field line starting in [s, e) of file f.
+template <int NF, class F>
+static inline void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line) {
+  u64 ls = align_start(f, s);
+  const char* base = f.p;
+  const u64 lim = (f.n + 63) & ~(u64)63;
+  Fld fl[NF];
+  while (ls < e) {
+    const u64 wb = ls & ~(u64)63;
+    const u64 we = std::min(lim, wb + FLAT_W);
+    u32 nc = 0, nn = 0, cq = 0;
+    for (u64 b = wb; b < we; b += 64) {
+      u64 cm, nm, qm;
+      block_masks3(base + b, cm, nm, qm);
+      if (b == wb) {
+        const u64 keep = ~0ULL << (ls - wb);
+        cm &= keep;
+        nm &= keep;
+        qm &= keep;
+      }
+      const u32 off = (u32)(b - wb);
+      {
+        const u32 cnt = (u32)__builtin_popcountll(cm);
+        u32* o = FL.com + nc;
+        for (int i = 0; i < 8; i++) {
+          o[i] = off + ctz_any(cm);
+          cm &= cm - 1;
+        }
+        if (UNLIKELY(cnt > 8)) {
+          for (u32 i = 8; i < cnt; i++) {
+            o[i] = off + ctz_any(cm);
+            cm &= cm - 1;
+          }
+        }
+        nc += cnt;
+      }
+      {
+        const u32 cnt = (u32)__builtin_popcountll(nm);
+        u32* o = FL.nl + nn;
+        u32* oq = FL.nlq + nn;
+        u64 t = nm;
+        for (int i = 0; i < 2; i++) {
+          u32 bit = t ? (u32)__builtin_ctzll(t) : 0;
+          o[i] = off + bit;
+          oq[i] = cq + (u32)__builtin_popcountll(qm & ((1ULL << bit) - 1));
+          t &= t - 1;
+        }
+        if (UNLIKELY(cnt > 2)) {
+          for (u32 i = 2; i < cnt; i++) {
+            u32 bit = (u32)__builtin_ctzll(t);
+            o[i] = off + bit;
+            oq[i] = cq + (u32)__builtin_popcountll(qm & ((1ULL << bit) - 1));
+            t &= t - 1;
+          }
+        }
+        nn += cnt;
+      }
+      cq += (u32)__builtin_popcountll(qm);
+    }
+    if (UNLIKELY(nn == 0)) {
+      // a line longer than the window: fall back to the incremental scanner for it
+      Scanner sc;
+      sc.init(base, ls);
+      u64 nx;
+      if (parse_line<NF>(sc, base, fl, ls, nx)) on_line(fl);
+      ls = nx;
+      continue;
+    }
+    u32 ci = 0, prevq = 0;
+    for (u32 j = 0; j < nn; j++) {
+      const u32 le = FL.nl[j];
+      const u32 qn = FL.nlq[j] - prevq;
+      prevq = FL.nlq[j];
+      const bool cnt_ok = (ci + NF - 2 < nc) && (FL.com[ci + NF - 2] < le) && (ci + NF - 1 >= nc || FL.com[ci + NF - 1] > le);
+      if (LIKELY(cnt_ok)) {
+        u32 fs = (u32)(ls - wb);
+        u32 expq = 0, bad = 0;
+        for (int i = 0; i < NF; i++) {
+          const u32 fe = i < NF - 1 ? FL.com[ci + i] : le;
+          const char* q = base + wb;
+          const u32 len = fe - fs;
+          const u32 isq = q[fs] == '"';
+          bad |= isq & ((len < 2) | (q[fe - (len != 0)] != '"'));  // len==0 -> isq==0; never index before fs
+          fl[i].p = q + fs + isq;
+          fl[i].n = len - 2 * isq;
+          expq += 2 * isq;
+          fs = fe + 1;
+        }
+        ci += NF - 1;
+        if (!bad && qn == expq) on_line(fl);
+      } else {
+        while (ci < nc && FL.com[ci] < le) ci++;
+      }
+      ls = wb + le + 1;
+      if (ls >= e) return;
+    }
+  }
+}
+
 static inline u64 align_start(const MFile& f, u64 s) {
   if (s == 0) {
     const char* nl = (const char*)memchr(f.p, '\n', f.n);
@@ -620,6 +773,7 @@ struct CampState {
 
 struct TCtx {
   int id = 0;
+  Flat* flat = new Flat;
   Arena<PRec> pa;
   Arena<ERec> ea;
   Arena<CRec> ca;
@@ -856,27 +1010,19 @@ static inline void flushC(TCtx& W, PendC* pc, int n) {
 }
 
 static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
-  u64 ls = align_start(f, s);
-  if (ls >= e) return;
-  Scanner sc;
-  sc.init(f.p, ls);
-  Fld fl[7];
   PendE pend[16];
   int npd = 0;
   const u32 qmask = (1u << QBITS) - 1;
-  while (ls < e) {
-    u64 nx;
-    bool ok = parse_line<7>(sc, f.p, fl, ls, nx);
-    ls = nx;
-    if (!ok || fl[0].n == 0) continue;
+  for_lines<7>(f, s, e, *W.flat, [&](Fld* fl) {
+    if (fl[0].n == 0) return;
     W.n_ev_lines++;
 #if STAGE == 1
-    W.n_ev_valid += fl[2].n + fl[1].n; continue;
+    W.n_ev_valid += fl[2].n + fl[1].n; return;
 #endif
     u64 h1 = hstr(fl[0].p, fl[0].n);
     u32 crc = crcstr(fl[0].p, fl[0].n);
 #if STAGE == 2
-    W.n_ev_valid += h1 + crc + hstr(fl[1].p, fl[1].n); continue;
+    W.n_ev_valid += h1 + crc + hstr(fl[1].p, fl[1].n); return;
 #endif
     u32 q = (u32)(h1 >> (64 - QBITS));
     u64 ekey = (h1 << QBITS) | (crc & qmask);
@@ -907,11 +1053,11 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
     }
     if (valid && (ing == INVALID || (i64)ing * 1000 - ts > DAYMS)) valid = false;
 #if STAGE == 3
-    W.n_ev_valid += valid + h1 + crc + ts + hstr(fl[1].p, fl[1].n); continue;
+    W.n_ev_valid += valid + h1 + crc + ts + hstr(fl[1].p, fl[1].n); return;
 #endif
     if (!valid) {
       W.es[q].push({ekey, ing, INVALID}, W.ea);
-      continue;
+      return;
     }
     W.n_ev_valid++;
     PendE& pd = pend[npd++];
@@ -926,27 +1072,19 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
       flushE(W, pend, npd);
       npd = 0;
     }
-  }
+  });
   flushE(W, pend, npd);
 }
 
 static void clicks_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
-  u64 ls = align_start(f, s);
-  if (ls >= e) return;
-  Scanner sc;
-  sc.init(f.p, ls);
-  Fld fl[4];
   PendC pend[16];
   int npd = 0;
-  while (ls < e) {
-    u64 nx;
-    bool ok = parse_line<4>(sc, f.p, fl, ls, nx);
-    ls = nx;
-    if (!ok || fl[0].n == 0 || fl[1].n == 0) continue;
+  for_lines<4>(f, s, e, *W.flat, [&](Fld* fl) {
+    if (fl[0].n == 0 || fl[1].n == 0) return;
     i64 ts;
-    if (!parse_ts(fl[3].p, fl[3].n, ts) || ts < CWS || ts >= WE) continue;
+    if (!parse_ts(fl[3].p, fl[3].n, ts) || ts < CWS || ts >= WE) return;
     i32 c = CAMPS.find(fl[2].p, fl[2].n);
-    if (c < 0) continue;
+    if (c < 0) return;
     W.n_ck_valid++;
     PendC& pd = pend[npd++];
     pd.huid = hstr(fl[1].p, fl[1].n);
@@ -957,7 +1095,7 @@ static void clicks_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
       flushC(W, pend, npd);
       npd = 0;
     }
-  }
+  });
   flushC(W, pend, npd);
 }
 
