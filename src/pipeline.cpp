@@ -773,6 +773,15 @@ struct IdSlot {
   u32 pad;
 };
 static u64* NAMEP = nullptr;          // person id -> name (encoded pointer)
+// Global event-id table for deduplication: key = 64-bit hash, val = ingest<<32 | record index (0 = unset).
+// The home slot comes from an independent CRC, so a false match needs two independent collisions.
+struct ESlot {
+  std::atomic<u64> key;
+  std::atomic<u64> val;
+};
+static ESlot* ETAB = nullptr;
+static u64 ECAP = 0;
+static inline u64 e_home(u32 crc) { return ((u64)crc * ECAP) >> 32; }
 static std::atomic<u32> PIDCTR{0};    // next unassigned person id
 static u32 PIDMAX = 0;                // person ids are < PIDMAX after parsing
 static u32 PMASK = 0;
@@ -976,6 +985,7 @@ struct TCtx {
   // dedup scratch
   Buf<ERec> dtab;
   std::vector<std::vector<u64>> kills;  // per person partition: (thread << 32 | arena index) of losing copies
+  std::vector<u64> klist;               // losing copies found while parsing: thread << 32 | arena index
   // person scratch
   Buf<LPS> lps;
   std::vector<u32> act;
@@ -1201,6 +1211,7 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
 struct PendE {
   u64 huid, np, ekey;
   u32 ts, xp, ing, q;  // xp: category<<24 | price for purchases, 0xFF<<24 otherwise
+  u32 crc, valid;
 };
 struct PendC {
   u64 huid, idp, unp;
@@ -1251,6 +1262,57 @@ static AI u32 person_of(TCtx& W, u64 h, u64 np) {
   }
 }
 
+#ifndef ERECDEDUP
+static AI void eid_insert(TCtx& W, u64 h, u32 crc, u64 mine) {
+  u64 j = e_home(crc);
+  for (u64 probes = 0;; probes++) {
+    u64 k = ETAB[j].key.load(std::memory_order_acquire);
+    if (k == 0) {
+      u64 exp = 0;
+      if (ETAB[j].key.compare_exchange_strong(exp, h, std::memory_order_acq_rel)) {
+        ETAB[j].val.store(mine, std::memory_order_release);
+        return;
+      }
+      k = exp;
+    }
+    if (k == h) {
+      u64 cur;
+      while ((cur = ETAB[j].val.load(std::memory_order_acquire)) == 0) cpu_relax();
+      for (;;) {
+        if ((u32)(mine >> 32) < (u32)(cur >> 32)) {  // earlier ingest wins; equal ingest keeps the first
+          if (ETAB[j].val.compare_exchange_weak(cur, mine, std::memory_order_acq_rel)) {
+            if ((u32)cur != INVALID) W.klist.push_back(cur & 0xFFFFFFFFu);
+            return;
+          }
+        } else {
+          if ((u32)mine != INVALID) W.klist.push_back(mine & 0xFFFFFFFFu);
+          return;
+        }
+      }
+    }
+    if (++j == ECAP) j = 0;
+    if (UNLIKELY(probes > ECAP)) die("event id table full");
+  }
+}
+static inline void flushE(TCtx& W, PendE* pe, int n) {
+  const u32 tid = (u32)W.id << TSHIFT;
+  const u32 lim = 1u << TSHIFT;
+  u32 pid[PEND], idx[PEND];
+  for (int i = 0; i < n; i++)
+    if (pe[i].valid) pid[i] = person_of(W, pe[i].huid, pe[i].np);
+  for (int i = 0; i < n; i++) {
+    if (!pe[i].valid) continue;
+    idx[i] = W.ps.push(pid[i] & PMASK, {pid[i], pe[i].ts}, W.pa);
+    if (UNLIKELY(idx[i] >= lim - 1)) die("too many records per thread");
+    if (UNLIKELY((pe[i].xp >> 24) != 0xFF)) {
+      const u32 b = idx[i] / BLK;
+      W.us.push(pid[i] & PMASK, {pid[i], pe[i].ts, pe[i].xp, W.pa.ord[b] * BLK + idx[i] % BLK}, W.ua);
+    }
+  }
+  for (int i = 0; i < n; i++)
+    eid_insert(W, pe[i].ekey, pe[i].crc, ((u64)pe[i].ing << 32) | (pe[i].valid ? (tid | idx[i]) : INVALID));
+}
+#else
 static inline void flushE(TCtx& W, PendE* pe, int n) {
   const u32 tid = (u32)W.id << TSHIFT;
   const u32 lim = 1u << TSHIFT;
@@ -1268,6 +1330,7 @@ static inline void flushE(TCtx& W, PendE* pe, int n) {
   for (int i = 0; i < n; i++) W.es.push(pe[i].q, {pe[i].ekey, pe[i].ing, tid | idx[i]}, W.ea);
 #endif
 }
+#endif
 static inline void flushC(TCtx& W, PendC* pc, int n) {
   for (int i = 0; i < n; i++) {
     const u32 pid = person_of(W, pc[i].huid, pc[i].unp);
@@ -1332,20 +1395,41 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
 #if STAGE == 3
     W.n_ev_valid += valid + h1 + crc + ts + hstr(fl[1].p, fl[1].n); return;
 #endif
+#ifdef ERECDEDUP
     if (!valid) {
       W.es.push(q, {ekey, ing, INVALID}, W.ea);
       return;
     }
-    W.n_ev_valid++;
+#endif
     PendE& pd = pend[npd++];
+#ifndef ERECDEDUP
+    __builtin_prefetch(&ETAB[e_home(crc)], 1);
+    pd.ekey = h1;
+    pd.crc = crc;
+    pd.valid = valid;
+    pd.ing = ing;
+    if (!valid) {
+      if (npd == PEND) {
+        flushE(W, pend, npd);
+        npd = 0;
+      }
+      return;
+    }
+#endif
+    W.n_ev_valid++;
     pd.huid = hstr(fl[1].p, fl[1].n);
     __builtin_prefetch(&IDS[id_home(pd.huid)]);
     pd.np = encp(fl[1].p, fl[1].n);
     pd.ts = (u32)(ts - WS);
     pd.xp = (X << 24) | price;
+#ifdef ERECDEDUP
     pd.ekey = ekey;
     pd.ing = ing;
     pd.q = q;
+#else
+    (void)q;
+    (void)ekey;
+#endif
     if (npd == PEND) {
       flushE(W, pend, npd);
       npd = 0;
@@ -2278,6 +2362,10 @@ int main(int argc, char** argv) {
   logt("mapped");
 
   links_phase(lkf, (evbytes / 85 + ckbytes / 45) / 24 + 4096);
+#ifndef ERECDEDUP
+  ECAP = std::max<u64>(4096, evbytes / 64);
+  ETAB = (ESlot*)big_alloc(ECAP * sizeof(ESlot));
+#endif
   small_thr.join();
   logt("small tables joined");
 
@@ -2315,6 +2403,7 @@ int main(int argc, char** argv) {
   logt("parsed events+clicks");
   if (getenv("PIPE_STOP_PARSE")) { fprintf(stderr, "x %llu\n", (unsigned long long)TC[0].n_ev_valid); _exit(0); }
 
+#ifdef ERECDEDUP
   {
     std::atomic<u32> next{0};
     u32 Q = 1u << QBITS;
@@ -2326,6 +2415,17 @@ int main(int argc, char** argv) {
       }
     });
   }
+#else
+  // losing copies found during parsing -> per person partition, stream-local index
+  par_run([&](int t) {
+    TCtx& W = TC[t];
+    for (u64 g : W.klist) {
+      const u32 u = (u32)g >> TSHIFT, idx = (u32)g & ((1u << TSHIFT) - 1);
+      const u32 b = idx / BLK;
+      W.kills[TC[u].pa.owner[b]].push_back(((u64)u << 32) | (TC[u].pa.ord[b] * BLK + idx % BLK));
+    }
+  });
+#endif
   logt("dedup");
 
   {
@@ -2471,6 +2571,7 @@ int main(int argc, char** argv) {
       }
     }
     add(IDS, IDCAP * sizeof(IdSlot));
+    if (ETAB) add(ETAB, ECAP * sizeof(ESlot));
     add(IDP, IDCAP * sizeof(u64));
     if (total > ((size_t)256 << 20)) {
       std::atomic<size_t> nx{0};
