@@ -29,7 +29,7 @@ jobs:
         run: |
           curl -sSL -o /tmp/gen.zip https://www.joinbuilders.org/buildathon/tracks/shopping-sessions/files/generator.zip
           cd /tmp && unzip -q gen.zip && cd generator && cargo build --release -q
-          ./target/release/generate --seed 7 --events 20000000 --clicks 5000000 --output /tmp/p20
+          EV=$(cat $GITHUB_WORKSPACE/.github/bench-events 2>/dev/null || echo 20000000); ./target/release/generate --seed 7 --events $EV --clicks $((EV / 4)) --output /tmp/p20
       - name: Build candidate, variants and baseline
         run: |
           R=results/$(git rev-parse --short HEAD)-${{ matrix.job }}.txt

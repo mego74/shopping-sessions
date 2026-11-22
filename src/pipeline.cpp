@@ -2722,7 +2722,10 @@ int main(int argc, char** argv) {
 #define QDIV 12000.0
 #endif
     int pb = (int)std::lround(std::log2(std::max(1.0, est / PDIV)));
-    PBITS = std::min(11, std::max(4, pb));
+#ifndef PMAXB
+#define PMAXB 11
+#endif
+    PBITS = std::min(PMAXB, std::max(4, pb));
     PMASK = (1u << PBITS) - 1;
     int qb = (int)std::lround(std::log2(std::max(1.0, est / QDIV)));
     QBITS = std::min(12, std::max(4, qb));
