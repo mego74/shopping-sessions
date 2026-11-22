@@ -183,7 +183,26 @@ static AI u64 fmix(u64 h) {
   h ^= h >> 33;
   return h;
 }
+struct HMaskT {  // byte masks keeping the first n bytes of two 8-byte words, n = 0..16
+  u64 m[17][2];
+  constexpr HMaskT() : m() {
+    for (int n = 0; n <= 16; n++) {
+      const int a = n < 8 ? n : 8, b = n > 8 ? n - 8 : 0;
+      m[n][0] = a >= 8 ? ~0ULL : ((1ULL << (8 * a)) - 1);
+      m[n][1] = b >= 8 ? ~0ULL : ((1ULL << (8 * b)) - 1);
+    }
+  }
+};
+alignas(64) static constexpr HMaskT HMASK{};
+// 64-bit string hash; may over-read up to 16 bytes past p.
 static AI u64 hstr(const char* p, u32 n) {
+#ifndef OLDHASH
+  if (LIKELY(n <= 16)) {
+    const u64 a = load64(p) & HMASK.m[n][0], b = load64(p + 8) & HMASK.m[n][1];
+    const u64 h = mum(a ^ 0x589965cc75374cc3ULL, b ^ ((u64)n * 0xe7037ed1a0b428dbULL) ^ 0x1d8e4e27c47d124fULL);
+    return h ? h : 1;
+  }
+#endif
   u64 seed = 0xa0761d6478bd642fULL ^ ((u64)n * 0xe7037ed1a0b428dbULL);
   while (n > 16) {
     seed = mum(load64(p) ^ 0x8ebc6af09c88c6e3ULL, load64(p + 8) ^ seed);

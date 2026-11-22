@@ -1,3 +1,3 @@
-oldq -DOLDQBITS
+oldhash -DOLDHASH
 pfw64 -DPFW=64
-notsse -DNOTSSE
+oldq -DOLDQBITS
