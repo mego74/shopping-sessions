@@ -92,13 +92,14 @@ struct MFile {
 };
 
 static MFile map_file(const std::string& path) {
+  static const u64 PG = (u64)sysconf(_SC_PAGESIZE) > 0 ? (u64)sysconf(_SC_PAGESIZE) : 4096;
   int fd = open(path.c_str(), O_RDONLY);
   if (fd < 0) die(("open " + path).c_str());
   struct stat st;
   if (fstat(fd, &st) != 0) die("fstat");
   u64 n = (u64)st.st_size;
-  u64 mapn = (n + 4095) & ~(u64)4095;
-  u64 total = mapn + 3 * 4096;
+  u64 mapn = (n + PG - 1) & ~(PG - 1);
+  u64 total = mapn + 2 * PG + 65536;
   char* base = (char*)mmap(nullptr, total, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (base == MAP_FAILED) die("mmap region");
   if (n > 0) {
@@ -107,8 +108,8 @@ static MFile map_file(const std::string& path) {
   }
   close(fd);
   if (n == 0 || base[n - 1] != '\n') {
-    if (n % 4096 != 0) {
-      if (mprotect(base + (n & ~(u64)4095), 4096, PROT_READ | PROT_WRITE) != 0) die("mprotect");
+    if (n % PG != 0) {
+      if (mprotect(base + (n & ~(PG - 1)), PG, PROT_READ | PROT_WRITE) != 0) die("mprotect");
     }
     base[n] = '\n';
     n++;
