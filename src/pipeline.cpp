@@ -1196,6 +1196,9 @@ static AI u32 new_pid(TCtx& W) {
 // Dense person id of a user id: linked ids were numbered by the links phase; an id seen for the
 // first time here becomes its own person (named by itself).
 static AI u32 person_of(TCtx& W, u64 h, u64 np) {
+#ifdef DIAG_NOLOOKUP
+  (void)W; (void)np; return (u32)(h % IDCAP);
+#endif
   u64 j = id_home(h);
   for (u64 probes = 0;; probes++) {
     u64 k = IDS[j].key.load(std::memory_order_acquire);
@@ -1231,7 +1234,9 @@ static inline void flushE(TCtx& W, PendE* pe, int n) {
       const u32 b = idx / BLK;
       W.us.push(p, {pid, pe[i].ts, pe[i].xp, W.pa.ord[b] * BLK + idx % BLK}, W.ua);
     }
+#ifndef DIAG_NOEREC
     W.es.push(pe[i].q, {pe[i].ekey, pe[i].ing, tid | idx}, W.ea);
+#endif
   }
 }
 static inline void flushC(TCtx& W, PendC* pc, int n) {
@@ -2267,6 +2272,9 @@ int main(int argc, char** argv) {
     });
   }
   PIDMAX = PIDCTR.load();
+#ifdef DIAG_NOLOOKUP
+  PIDMAX = (u32)IDCAP;
+#endif
   logt("parsed events+clicks");
   if (getenv("PIPE_STOP_PARSE")) { fprintf(stderr, "x %llu\n", (unsigned long long)TC[0].n_ev_valid); _exit(0); }
 
