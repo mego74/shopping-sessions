@@ -560,7 +560,7 @@ static AI u64 lowbits(u32 k) { return k >= 64 ? ~0ULL : ((1ULL << k) - 1); }
 
 // Per-line variant of for_lines: SIMD masks over 192 bytes from each line start (lines are almost
 // always shorter), separators extracted branch-free; longer lines use the incremental scanner.
-template <int NF, class F>
+template <int NF, int NW = 3, class F>
 static inline void for_lines2(const MFile& f, u64 s, u64 e, F&& on_line) {
   u64 ls = align_start(f, s);
   const char* base = f.p;
@@ -571,7 +571,10 @@ static inline void for_lines2(const MFile& f, u64 s, u64 e, F&& on_line) {
     u64 c0, n0, q0, c1, n1, q1, c2, n2, q2;
     masks64u(p, c0, n0, q0);
     masks64u(p + 64, c1, n1, q1);
-    masks64u(p + 128, c2, n2, q2);
+    if (NW == 3)
+      masks64u(p + 128, c2, n2, q2);
+    else
+      c2 = n2 = q2 = 0;
     u32 le;
     if (LIKELY(n0)) le = ctz_any(n0);
     else if (n1) le = 64 + ctz_any(n1);
@@ -1514,11 +1517,14 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
   flushE(W, pend, npd);
 }
 
+#ifndef CLICKW
+#define CLICKW 3
+#endif
 static void clicks_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
   PendC pend[16];
   int npd = 0;
 #ifdef LINESIMD
-  for_lines2<4>(f, s, e, [&](Fld* fl) {
+  for_lines2<4, CLICKW>(f, s, e, [&](Fld* fl) {
 #else
   for_lines<4>(f, s, e, *W.flat, [&](Fld* fl) {
 #endif
