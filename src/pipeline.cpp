@@ -385,10 +385,10 @@ static AI u32 ctz_any(u64 x) {  // any value is fine for x == 0
 
 static const u32 FLAT_W = 16384;  // window bytes
 #ifndef CUNROLL
-#define CUNROLL 8
+#define CUNROLL 6
 #endif
 #ifndef NUNROLL
-#define NUNROLL 2
+#define NUNROLL 1
 #endif
 struct Flat {
   u32 com[FLAT_W + 64];
@@ -536,6 +536,86 @@ static inline void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line
       ls = wb + le + 1;
       if (ls >= e) return;
     }
+  }
+}
+
+// comma / newline / quote masks for 64 bytes at any address
+static AI void masks64u(const char* p, u64& cm, u64& nm, u64& qm) {
+#if defined(__AVX2__)
+  const __m256i a = _mm256_loadu_si256((const __m256i*)p), b = _mm256_loadu_si256((const __m256i*)(p + 32));
+  const __m256i C = _mm256_set1_epi8(','), N = _mm256_set1_epi8('\n'), Q = _mm256_set1_epi8('"');
+  cm = (u64)(u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(a, C)) | ((u64)(u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(b, C)) << 32);
+  nm = (u64)(u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(a, N)) | ((u64)(u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(b, N)) << 32);
+  qm = (u64)(u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(a, Q)) | ((u64)(u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(b, Q)) << 32);
+#else
+  alignas(64) char buf[64];
+  memcpy(buf, p, 64);
+  block_masks3(buf, cm, nm, qm);
+#endif
+}
+static AI u64 lowbits(u32 k) { return k >= 64 ? ~0ULL : ((1ULL << k) - 1); }
+
+// Per-line variant of for_lines: SIMD masks over 192 bytes from each line start (lines are almost
+// always shorter), separators extracted branch-free; longer lines use the incremental scanner.
+template <int NF, class F>
+static inline void for_lines2(const MFile& f, u64 s, u64 e, F&& on_line) {
+  u64 ls = align_start(f, s);
+  const char* base = f.p;
+  Fld fl[NF];
+  u32 pos[3 * (NF - 1) + 4];
+  while (ls < e) {
+    const char* p = base + ls;
+    u64 c0, n0, q0, c1, n1, q1, c2, n2, q2;
+    masks64u(p, c0, n0, q0);
+    masks64u(p + 64, c1, n1, q1);
+    masks64u(p + 128, c2, n2, q2);
+    u32 le;
+    if (LIKELY(n0)) le = ctz_any(n0);
+    else if (n1) le = 64 + ctz_any(n1);
+    else if (n2) le = 128 + ctz_any(n2);
+    else {
+      Scanner sc;
+      sc.init(base, ls);
+      u64 nx;
+      if (parse_line<NF>(sc, base, fl, ls, nx)) on_line(fl);
+      ls = nx;
+      continue;
+    }
+    const u64 m0 = lowbits(le), m1 = le > 64 ? lowbits(le - 64) : 0, m2 = le > 128 ? lowbits(le - 128) : 0;
+    c0 &= m0;
+    c1 &= m1;
+    c2 &= m2;
+    const u32 k0 = (u32)__builtin_popcountll(c0), k1 = (u32)__builtin_popcountll(c1);
+    const u32 cc = k0 + k1 + (u32)__builtin_popcountll(c2);
+    if (LIKELY(cc == NF - 1)) {
+      for (int i = 0; i < NF - 1; i++) {
+        pos[i] = ctz_any(c0);
+        c0 &= c0 - 1;
+      }
+      for (int i = 0; i < NF - 1; i++) {
+        pos[k0 + i] = 64 + ctz_any(c1);
+        c1 &= c1 - 1;
+      }
+      for (int i = 0; i < NF - 1; i++) {
+        pos[k0 + k1 + i] = 128 + ctz_any(c2);
+        c2 &= c2 - 1;
+      }
+      pos[NF - 1] = le;
+      const u32 qn = (u32)__builtin_popcountll(q0 & m0) + (u32)__builtin_popcountll(q1 & m1) + (u32)__builtin_popcountll(q2 & m2);
+      u32 fs = 0, expq = 0, bad = 0;
+      for (int i = 0; i < NF; i++) {
+        const u32 fe = pos[i];
+        const u32 len = fe - fs;
+        const u32 isq = p[fs] == '"';
+        bad |= isq & ((len < 2) | (p[fe - (len != 0)] != '"'));
+        fl[i].p = p + fs + isq;
+        fl[i].n = len - 2 * isq;
+        expq += 2 * isq;
+        fs = fe + 1;
+      }
+      if (!bad && qn == expq) on_line(fl);
+    }
+    ls += le + 1;
   }
 }
 
@@ -1262,7 +1342,7 @@ static AI u32 person_of(TCtx& W, u64 h, u64 np) {
   }
 }
 
-#ifndef ERECDEDUP
+#ifdef GLOBALDEDUP
 static AI void eid_insert(TCtx& W, u64 h, u32 crc, u64 mine) {
   u64 j = e_home(crc);
   for (u64 probes = 0;; probes++) {
@@ -1346,7 +1426,11 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
   PendE pend[PEND];
   int npd = 0;
   const u32 qmask = (1u << QBITS) - 1;
+#ifdef LINESIMD
+  for_lines2<7>(f, s, e, [&](Fld* fl) {
+#else
   for_lines<7>(f, s, e, *W.flat, [&](Fld* fl) {
+#endif
     if (fl[0].n == 0) return;
     W.n_ev_lines++;
 #if STAGE == 1
@@ -1395,14 +1479,14 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
 #if STAGE == 3
     W.n_ev_valid += valid + h1 + crc + ts + hstr(fl[1].p, fl[1].n); return;
 #endif
-#ifdef ERECDEDUP
+#ifndef GLOBALDEDUP
     if (!valid) {
       W.es.push(q, {ekey, ing, INVALID}, W.ea);
       return;
     }
 #endif
     PendE& pd = pend[npd++];
-#ifndef ERECDEDUP
+#ifdef GLOBALDEDUP
     __builtin_prefetch(&ETAB[e_home(crc)], 1);
     pd.ekey = h1;
     pd.crc = crc;
@@ -1422,7 +1506,7 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
     pd.np = encp(fl[1].p, fl[1].n);
     pd.ts = (u32)(ts - WS);
     pd.xp = (X << 24) | price;
-#ifdef ERECDEDUP
+#ifndef GLOBALDEDUP
     pd.ekey = ekey;
     pd.ing = ing;
     pd.q = q;
@@ -1441,7 +1525,11 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
 static void clicks_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
   PendC pend[16];
   int npd = 0;
+#ifdef LINESIMD
+  for_lines2<4>(f, s, e, [&](Fld* fl) {
+#else
   for_lines<4>(f, s, e, *W.flat, [&](Fld* fl) {
+#endif
     if (fl[0].n == 0 || fl[1].n == 0) return;
     i64 ts;
     if (!parse_ts(fl[3].p, fl[3].n, ts) || ts < CWS || ts >= WE) return;
@@ -2362,7 +2450,7 @@ int main(int argc, char** argv) {
   logt("mapped");
 
   links_phase(lkf, (evbytes / 85 + ckbytes / 45) / 24 + 4096);
-#ifndef ERECDEDUP
+#ifdef GLOBALDEDUP
   ECAP = std::max<u64>(4096, evbytes / 64);
   ETAB = (ESlot*)big_alloc(ECAP * sizeof(ESlot));
 #endif
@@ -2403,7 +2491,7 @@ int main(int argc, char** argv) {
   logt("parsed events+clicks");
   if (getenv("PIPE_STOP_PARSE")) { fprintf(stderr, "x %llu\n", (unsigned long long)TC[0].n_ev_valid); _exit(0); }
 
-#ifdef ERECDEDUP
+#ifndef GLOBALDEDUP
   {
     std::atomic<u32> next{0};
     u32 Q = 1u << QBITS;

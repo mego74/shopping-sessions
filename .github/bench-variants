@@ -1,1 +1,3 @@
-erec -DERECDEDUP
+linesimd -DLINESIMD
+global -DGLOBALDEDUP
+lsglobal -DLINESIMD -DGLOBALDEDUP
