@@ -1505,6 +1505,9 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
     for (u32 i = lo; i < hi; i++) {
       if (!DSLOT[i]) continue;
       u32 r = uf_find(i);
+#ifndef OLDROOT
+      PAR[i].store(r, std::memory_order_relaxed);  // unions are done: point straight at the root
+#endif
       u32 cur = BEST[r].load(std::memory_order_relaxed);
       for (;;) {
         if (cur != INVALID) {
@@ -1522,7 +1525,11 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
     drange(t, lo, hi);
     u32 c = 0;
     for (u32 i = lo; i < hi; i++)
+#ifndef OLDROOT
+      if (DSLOT[i] && PAR[i].load(std::memory_order_relaxed) == i) c++;
+#else
       if (DSLOT[i] && uf_find(i) == i) c++;
+#endif
     nroot[t + 1] = c;
   });
   for (int t = 0; t < NT; t++) nroot[t + 1] += nroot[t];
@@ -1542,7 +1549,11 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
     drange(t, lo, hi);
     for (u32 i = lo; i < hi; i++) {
       if (!DSLOT[i]) continue;
+#ifndef OLDROOT
+      IDS[DSLOT[i] - 1].pid1.store(RPID[PAR[i].load(std::memory_order_relaxed)] + 1, std::memory_order_relaxed);
+#else
       IDS[DSLOT[i] - 1].pid1.store(RPID[uf_find(i)] + 1, std::memory_order_relaxed);
+#endif
     }
   });
   PIDCTR.store(nroot[NT]);
