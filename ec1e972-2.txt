@@ -1,0 +1,335 @@
+commit ec1e9723192399f697eba3d8eebdc23c7fb92d99
+CPU(s):                                  4
+Model name:                              Intel(R) Xeon(R) 6975P-C
+L2 cache:                                4 MiB (2 instances)
+L3 cache:                                480 MiB (1 instance)
+7.0.0-1016-aws
+thp always [madvise] never
+baseline 94eb5626fa6d9f3640226b739b2f30dff4c7e387
+Ubuntu clang version 21.1.8 (6ubuntu1)
+variant eqpf: -DEQPF
+variant q11: -DQDIV=24000
+variant eqpf_q11: -DEQPF -DQDIV=24000
+docker current built
+== correctness cand
+36/36 fixtures passed
+MATCH
+== correctness gcc_bin
+36/36 fixtures passed
+MATCH
+== correctness d_current
+36/36 fixtures passed
+MATCH
+AB base wall 2.75 user 9.71 sys 0.93
+AB cand wall 2.69 user 9.71 sys 0.88
+AB eqpf wall 2.73 user 9.79 sys 0.89
+AB q11 wall 2.74 user 9.87 sys 0.87
+AB eqpf_q11 wall 2.77 user 9.77 sys 0.96
+AB gcc_bin wall 2.75 user 9.85 sys 0.96
+AB d_current wall 2.71 user 9.70 sys 0.92
+AB base wall 2.74 user 9.80 sys 0.97
+AB cand wall 2.81 user 9.64 sys 0.92
+AB eqpf wall 2.72 user 9.73 sys 0.95
+AB q11 wall 2.71 user 9.73 sys 0.86
+AB eqpf_q11 wall 2.73 user 9.78 sys 0.89
+AB gcc_bin wall 2.72 user 9.76 sys 0.94
+AB d_current wall 2.64 user 9.41 sys 0.95
+AB base wall 2.68 user 9.66 sys 0.90
+AB cand wall 2.67 user 9.56 sys 0.90
+AB eqpf wall 2.66 user 9.55 sys 0.91
+AB q11 wall 2.69 user 9.67 sys 0.89
+AB eqpf_q11 wall 2.68 user 9.64 sys 0.91
+AB gcc_bin wall 2.76 user 9.71 sys 0.92
+AB d_current wall 2.66 user 9.49 sys 0.93
+AB base wall 2.70 user 9.63 sys 0.95
+AB cand wall 2.68 user 9.57 sys 0.98
+AB eqpf wall 2.66 user 9.53 sys 0.93
+AB q11 wall 2.69 user 9.67 sys 0.93
+AB eqpf_q11 wall 2.69 user 9.67 sys 0.92
+AB gcc_bin wall 2.72 user 9.69 sys 0.91
+AB d_current wall 2.63 user 9.42 sys 0.93
+AB base wall 2.69 user 9.62 sys 0.92
+AB cand wall 2.67 user 9.56 sys 0.92
+AB eqpf wall 2.70 user 9.53 sys 0.91
+AB q11 wall 2.68 user 9.60 sys 0.96
+AB eqpf_q11 wall 2.71 user 9.63 sys 0.94
+AB gcc_bin wall 2.72 user 9.81 sys 0.90
+AB d_current wall 2.69 user 9.44 sys 0.88
+AB base wall 2.73 user 9.80 sys 0.95
+AB cand wall 2.68 user 9.64 sys 0.90
+AB eqpf wall 2.70 user 9.56 sys 0.95
+AB q11 wall 2.68 user 9.62 sys 0.94
+AB eqpf_q11 wall 2.69 user 9.72 sys 0.87
+AB gcc_bin wall 2.72 user 9.68 sys 0.94
+AB d_current wall 2.70 user 9.52 sys 0.94
+AB base wall 2.72 user 9.75 sys 0.92
+-- last base phases
+[    0.06 ms] small tables
+[    2.02 ms] mapped
+[   31.55 ms] links parsed
+[  157.40 ms] links done
+[  157.45 ms] small tables joined
+[ 1887.98 ms] parsed events+clicks
+[ 2067.84 ms] dedup
+[ 2674.09 ms] persons
+  person cpu-ms: group 223.2 scatter 537.3 names 0.0 process 1506.2
+[ 2675.66 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2692.43 ms] released
+AB base wall 2.72 user 9.75 sys 0.92
+AB cand wall 2.70 user 9.70 sys 0.93
+-- last cand phases
+[    0.06 ms] small tables
+[    1.94 ms] mapped
+[   31.20 ms] links parsed
+[  156.59 ms] links done
+[  156.64 ms] small tables joined
+[ 1889.44 ms] parsed events+clicks
+[ 2074.28 ms] dedup
+[ 2660.45 ms] persons
+  person cpu-ms: group 221.5 scatter 534.0 names 0.0 process 1427.8
+[ 2662.09 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2678.74 ms] released
+AB cand wall 2.70 user 9.70 sys 0.93
+AB eqpf wall 2.69 user 9.61 sys 0.96
+-- last eqpf phases
+[    0.08 ms] small tables
+[    2.05 ms] mapped
+[   31.67 ms] links parsed
+[  154.91 ms] links done
+[  154.97 ms] small tables joined
+[ 1878.26 ms] parsed events+clicks
+[ 2057.84 ms] dedup
+[ 2645.15 ms] persons
+  person cpu-ms: group 222.6 scatter 549.8 names 0.0 process 1421.4
+[ 2646.98 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2664.04 ms] released
+AB eqpf wall 2.69 user 9.61 sys 0.96
+AB q11 wall 2.75 user 9.65 sys 1.01
+-- last q11 phases
+[    0.06 ms] small tables
+[    2.27 ms] mapped
+[   32.12 ms] links parsed
+[  160.96 ms] links done
+[  161.01 ms] small tables joined
+[ 1890.06 ms] parsed events+clicks
+[ 2110.84 ms] dedup
+[ 2710.53 ms] persons
+  person cpu-ms: group 230.8 scatter 554.3 names 0.0 process 1452.0
+[ 2712.06 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=11
+[ 2729.09 ms] released
+AB q11 wall 2.75 user 9.65 sys 1.01
+AB eqpf_q11 wall 2.69 user 9.63 sys 0.97
+-- last eqpf_q11 phases
+[    0.07 ms] small tables
+[    1.87 ms] mapped
+[   31.32 ms] links parsed
+[  153.58 ms] links done
+[  153.63 ms] small tables joined
+[ 1850.98 ms] parsed events+clicks
+[ 2069.69 ms] dedup
+[ 2651.27 ms] persons
+  person cpu-ms: group 221.3 scatter 534.7 names 0.0 process 1414.1
+[ 2652.83 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=11
+[ 2669.80 ms] released
+AB eqpf_q11 wall 2.69 user 9.63 sys 0.97
+AB gcc_bin wall 2.70 user 9.71 sys 0.93
+-- last gcc_bin phases
+[    0.08 ms] small tables
+[    2.10 ms] mapped
+[   32.35 ms] links parsed
+[  151.09 ms] links done
+[  151.14 ms] small tables joined
+[ 1915.28 ms] parsed events+clicks
+[ 2086.26 ms] dedup
+[ 2660.77 ms] persons
+  person cpu-ms: group 223.1 scatter 513.9 names 0.0 process 1396.8
+[ 2662.35 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2679.01 ms] released
+AB gcc_bin wall 2.70 user 9.71 sys 0.93
+AB d_current wall 2.66 user 9.47 sys 0.97
+-- last d_current phases
+[    0.06 ms] small tables
+[    2.02 ms] mapped
+[   31.13 ms] links parsed
+[  152.25 ms] links done
+[  152.31 ms] small tables joined
+[ 1854.71 ms] parsed events+clicks
+[ 2030.84 ms] dedup
+[ 2613.89 ms] persons
+  person cpu-ms: group 226.4 scatter 535.3 names 0.0 process 1410.5
+[ 2615.49 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2632.44 ms] released
+AB d_current wall 2.66 user 9.47 sys 0.97
+SUMMARY base      : median wall 2.720s  min 2.680s  median user 9.73s  ratio 1.000
+SUMMARY cand      : median wall 2.685s  min 2.670s  median user 9.64s  ratio 0.987
+SUMMARY eqpf      : median wall 2.695s  min 2.660s  median user 9.59s  ratio 0.991
+SUMMARY q11       : median wall 2.700s  min 2.680s  median user 9.66s  ratio 0.993
+SUMMARY eqpf_q11  : median wall 2.690s  min 2.680s  median user 9.66s  ratio 0.989
+SUMMARY gcc_bin   : median wall 2.720s  min 2.700s  median user 9.71s  ratio 1.000
+SUMMARY d_current : median wall 2.660s  min 2.630s  median user 9.47s  ratio 0.978
+== perf by symbol
+    45.49%  [.] main::$_3::operator()(int) const
+    17.27%  [.] main::$_6::operator()(int) const
+    12.37%  [.] flushE(TCtx&, PendE*, int)
+     5.99%  [.] main::$_4::operator()(int) const
+     2.92%  [k] kernel_init_pages
+     2.18%  [.] flushC(TCtx&, PendC*, int)
+     1.16%  [.] __memmove_avx512_unaligned_erms
+     0.95%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_3>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_3&&)::{lambda()#1}> > >::_M_run()
+     0.76%  [.] id_insert(unsigned long, unsigned long, DenseAlloc&)
+     0.70%  [.] main
+     0.63%  [.] links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_0::operator()(int) const
+     0.62%  [.] __memcmp_evex_movbe
+     0.61%  [k] asm_exc_page_fault
+     0.52%  [.] __memset_avx512_unaligned_erms
+     0.39%  [k] rep_movs_alternative
+     0.38%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_6>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_6&&)::{lambda()#1}> > >::_M_run()
+     0.37%  [k] get_mem_cgroup_from_mm
+     0.33%  [.] write_user_daily(TCtx&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+     0.31%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_1>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_1&&)::{lambda()#1}> > >::_M_run()
+     0.31%  [k] sync_regs
+     0.27%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_2>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_2&&)::{lambda()#1}> > >::_M_run()
+     0.24%  [k] __rmqueue_pcplist
+     0.23%  [k] filemap_map_folio_range
+     0.19%  [k] do_anonymous_page
+     0.18%  [k] folio_remove_rmap_ptes
+     0.14%  [k] __mem_cgroup_charge
+     0.13%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_5>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::$_5&&)::{lambda()#1}> > >::_M_run()
+     0.12%  [k] mas_walk
+     0.12%  [k] get_and_clear_full_ptes.isra.0
+     0.11%  [k] next_uptodate_folio
+== perf by srcline (top)
+    12.10%  pipeline.cpp:0
+     3.73%  pipeline.cpp:1634
+     3.03%  pipeline.cpp:1254
+     2.88%  kernel_init_pages+58
+     2.38%  ??:0
+     2.06%  pipeline.cpp:386
+     1.65%  pipeline.cpp:892
+     1.63%  pipeline.cpp:242
+     1.60%  pipeline.cpp:1017
+     1.50%  stl_vector.h:1264
+     1.49%  pipeline.cpp:1260
+     1.29%  pipeline.cpp:538
+     1.21%  pipeline.cpp:202
+     1.16%  pipeline.cpp:2395
+     1.14%  pipeline.cpp:2561
+     1.09%  pipeline.cpp:816
+     1.05%  pipeline.cpp:1265
+     0.95%  pipeline.cpp:1969
+     0.94%  pipeline.cpp:2396
+     0.86%  pipeline.cpp:2266
+     0.84%  pipeline.cpp:176
+     0.84%  pipeline.cpp:1709
+     0.80%  pipeline.cpp:561
+     0.79%  pipeline.cpp:841
+     0.77%  pipeline.cpp:1261
+     0.76%  atomic_base.h:573
+     0.74%  pipeline.cpp:1945
+     0.71%  pipeline.cpp:177
+     0.64%  pipeline.cpp:950
+     0.60%  pipeline.cpp:957
+     0.60%  asm_exc_page_fault+0
+     0.59%  pipeline.cpp:1840
+     0.59%  pipeline.cpp:523
+     0.59%  pipeline.cpp:1548
+     0.55%  pipeline.cpp:336
+     0.55%  pipeline.cpp:466
+     0.54%  pipeline.cpp:890
+     0.54%  pipeline.cpp:2334
+     0.54%  pipeline.cpp:203
+     0.53%  pipeline.cpp:2332
+     0.53%  pipeline.cpp:562
+     0.49%  pipeline.cpp:629
+     0.47%  pipeline.cpp:1018
+     0.47%  pipeline.cpp:951
+     0.47%  vector.tcc:0
+     0.47%  pipeline.cpp:956
+     0.46%  pipeline.cpp:207
+     0.45%  pipeline.cpp:544
+     0.44%  pipeline.cpp:888
+     0.44%  pipeline.cpp:1882
+     0.43%  pipeline.cpp:543
+     0.43%  pipeline.cpp:848
+     0.42%  pipeline.cpp:1586
+     0.39%  pipeline.cpp:1813
+     0.39%  rep_movs_alternative+74
+     0.38%  pipeline.cpp:1650
+     0.38%  pipeline.cpp:1985
+     0.37%  stl_algo.h:0
+     0.37%  pipeline.cpp:2103
+     0.37%  pipeline.cpp:886
+     0.36%  pipeline.cpp:628
+     0.36%  pipeline.cpp:2494
+     0.36%  pipeline.cpp:2495
+     0.34%  vector.tcc:119
+     0.34%  atomic_base.h:0
+     0.33%  pipeline.cpp:659
+     0.32%  pipeline.cpp:680
+     0.32%  stl_vector.h:1119
+     0.32%  pipeline.cpp:1976
+     0.31%  pipeline.cpp:1095
+     0.31%  vector.tcc:114
+     0.31%  pipeline.cpp:663
+     0.31%  pipeline.cpp:2202
+     0.30%  pipeline.cpp:1968
+     0.30%  pipeline.cpp:1796
+     0.29%  pipeline.cpp:1977
+     0.29%  pipeline.cpp:2421
+     0.29%  pipeline.cpp:946
+     0.29%  pipeline.cpp:1933
+     0.28%  pipeline.cpp:2100
+     0.27%  pipeline.cpp:658
+     0.27%  pipeline.cpp:1781
+     0.27%  pipeline.cpp:834
+     0.27%  pipeline.cpp:201
+     0.26%  atomic_base.h:501
+     0.26%  pipeline.cpp:664
+     0.26%  pipeline.cpp:209
+     0.26%  pipeline.cpp:421
+     0.26%  pipeline.cpp:2265
+     0.26%  pipeline.cpp:887
+     0.25%  pipeline.cpp:630
+     0.25%  pipeline.cpp:2200
+     0.25%  pipeline.cpp:2493
+     0.24%  pipeline.cpp:2106
+     0.24%  pipeline.cpp:533
+     0.23%  pipeline.cpp:525
+     0.23%  pipeline.cpp:2330
+     0.23%  pipeline.cpp:2104
+     0.22%  pipeline.cpp:842
+     0.22%  pipeline.cpp:1823
+     0.21%  pipeline.cpp:2485
+     0.21%  pipeline.cpp:1649
+     0.21%  stl_algobase.h:0
+     0.21%  pipeline.cpp:530
+     0.20%  sync_regs+30
+     0.20%  pipeline.cpp:529
+     0.20%  pipeline.cpp:2331
+     0.19%  atomic_base.h:536
+     0.19%  pipeline.cpp:832
+     0.19%  pipeline.cpp:889
+     0.19%  pipeline.cpp:919
+     0.19%  filemap_map_folio_range+208
+     0.19%  pipeline.cpp:643
+     0.18%  pipeline.cpp:2518
+     0.18%  pipeline.cpp:2213
+     0.18%  pipeline.cpp:1842
+     0.17%  pipeline.cpp:2275
+     0.17%  pipeline.cpp:387
+     0.17%  pipeline.cpp:1710
+     0.16%  pipeline.cpp:1789
+PSTAT base instructions:u=54436M cycles:u=37409M branch-misses:u=244M instructions:k=1539M cycles:k=3619M 
+PSTAT cand instructions:u=54455M cycles:u=37073M branch-misses:u=236M instructions:k=1526M cycles:k=3622M 
+PSTAT eqpf instructions:u=54776M cycles:u=37148M branch-misses:u=236M instructions:k=1524M cycles:k=3546M 
+PSTAT q11 instructions:u=54450M cycles:u=37296M branch-misses:u=236M instructions:k=1537M cycles:k=3646M 
+PSTAT eqpf_q11 instructions:u=54770M cycles:u=37442M branch-misses:u=236M instructions:k=1526M cycles:k=3629M 
+PSTAT gcc_bin instructions:u=58969M cycles:u=37698M branch-misses:u=245M instructions:k=1525M cycles:k=3641M 
+PSTAT d_current instructions:u=54566M cycles:u=36315M branch-misses:u=227M instructions:k=1526M cycles:k=3615M 
