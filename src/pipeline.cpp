@@ -974,7 +974,14 @@ static void links_phase(const std::vector<MFile>& lf) {
   BEST = (std::atomic<u32>*)big_alloc(IDCAP * sizeof(u32));
   logt("links parsed");
   par_run([&](int t) {
-    for (LRec& r : TC[t].lrecs) {
+    std::vector<LRec>& L = TC[t].lrecs;
+    const size_t n = L.size(), D = 12;
+    for (size_t i = 0; i < n; i++) {
+      if (i + D < n) {
+        __builtin_prefetch(&IDS[id_home(L[i + D].a)], 1);
+        __builtin_prefetch(&IDS[id_home(L[i + D].b)], 1);
+      }
+      LRec& r = L[i];
       u32 sa = id_insert(r.a, r.pa);
       u32 sb = id_insert(r.b, r.pb);
       r.a = sa;
@@ -982,8 +989,15 @@ static void links_phase(const std::vector<MFile>& lf) {
     }
   });
   par_run([&](int t) {
-    for (LRec& r : TC[t].lrecs)
-      if (r.a != r.b) uf_unite((u32)r.a, (u32)r.b);
+    std::vector<LRec>& L = TC[t].lrecs;
+    const size_t n = L.size(), D = 12;
+    for (size_t i = 0; i < n; i++) {
+      if (i + D < n) {
+        __builtin_prefetch(&PAR[L[i + D].a]);
+        __builtin_prefetch(&PAR[L[i + D].b]);
+      }
+      if (L[i].a != L[i].b) uf_unite((u32)L[i].a, (u32)L[i].b);
+    }
   });
   auto range = [&](int t, u64& lo, u64& hi) {
     lo = IDCAP * (u64)t / NT;
