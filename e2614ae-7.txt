@@ -1,0 +1,467 @@
+commit e2614aecc805dfaafa67f41feebd2cb44820ad89
+CPU(s):                                  4
+Model name:                              AMD EPYC 7763 64-Core Processor
+L2 cache:                                1 MiB (2 instances)
+L3 cache:                                32 MiB (1 instance)
+7.0.0-1020-azure
+thp always [madvise] never
+baseline 6210f47
+variant stage1: -DSTAGE=1
+variant stage2: -DSTAGE=2
+variant stage3: -DSTAGE=3
+variant nolookup: -DDIAG_NOLOOKUP
+variant noerec: -DDIAG_NOEREC
+total 1084
+drwxr-xr-x  2 runner runner    4096 Nov 22 06:44 .
+drwxrwxrwt 16 root   root      4096 Nov 22 06:44 ..
+-rw-r--r--  1 runner runner   87613 Nov 22 06:44 pipeline.cpp
+-rw-r--r--  1 runner runner 1009048 Nov 22 06:44 pipeline.o
+pipeline.cpp: In function ‘(static initializers for pipeline.cpp)’:
+pipeline.cpp:2804:1: warning: ‘/tmp/pgo/pipeline.gcda’ profile count data file not found [-Wmissing-profile]
+ 2804 | }
+      | ^
+== correctness cand
+36/36 fixtures passed
+MATCH
+== correctness pgo_bin
+36/36 fixtures passed
+MATCH
+AB base wall 1.53 user 4.68 sys 0.43
+AB cand wall 1.32 user 4.66 sys 0.45
+AB stage1 wall 0.49 user 1.66 sys 0.19
+FAIL stage2 rc=134
+[  553.46 ms] parsed events+clicks
+[  553.64 ms] dedup
+terminate called after throwing an instance of 'std::bad_alloc'
+terminate called recursively
+  what():  std::bad_alloc
+terminate called recursively
+Command terminated by signal 6
+AB stage2 wall 3.45 user 2.00 sys 0.62
+FAIL stage3 rc=134
+[   84.00 ms] small tables joined
+[  820.70 ms] parsed events+clicks
+[  820.88 ms] dedup
+terminate called after throwing an instance of 'std::bad_alloc'
+terminate called recursively
+terminate called recursively
+  what():  Command terminated by signal 6
+AB stage3 wall 3.85 user 2.85 sys 0.65
+AB nolookup wall 1.38 user 4.62 sys 0.51
+AB noerec wall 1.20 user 4.21 sys 0.40
+AB pgo_bin wall 1.31 user 4.56 sys 0.51
+AB base wall 1.31 user 4.63 sys 0.47
+AB cand wall 1.31 user 4.61 sys 0.47
+AB stage1 wall 0.49 user 1.64 sys 0.21
+FAIL stage2 rc=134
+[   67.25 ms] small tables joined
+[  558.59 ms] parsed events+clicks
+[  558.77 ms] dedup
+terminate called after throwing an instance of 'std::bad_alloc'
+terminate called recursively
+terminate called recursively
+Command terminated by signal 6
+AB stage2 wall 3.66 user 1.97 sys 0.69
+FAIL stage3 rc=134
+[   85.05 ms] links done
+[   85.09 ms] small tables joined
+[  814.78 ms] parsed events+clicks
+[  814.96 ms] dedup
+terminate called after throwing an instance of 'terminate called recursively
+terminate called recursively
+Command terminated by signal 6
+AB stage3 wall 4.07 user 2.84 sys 0.69
+AB nolookup wall 1.40 user 4.65 sys 0.53
+AB noerec wall 1.20 user 4.23 sys 0.42
+AB pgo_bin wall 1.34 user 4.61 sys 0.45
+AB base wall 1.34 user 4.63 sys 0.48
+AB cand wall 1.33 user 4.66 sys 0.48
+AB stage1 wall 0.49 user 1.66 sys 0.20
+FAIL stage2 rc=134
+[  557.09 ms] parsed events+clicks
+[  557.27 ms] dedup
+terminate called after throwing an instance of 'std::bad_alloc'
+  what():  terminate called recursively
+terminate called recursively
+std::bad_alloc
+Command terminated by signal 6
+AB stage2 wall 3.64 user 1.99 sys 0.67
+FAIL stage3 rc=134
+[   91.69 ms] small tables joined
+[  821.33 ms] parsed events+clicks
+[  821.50 ms] dedup
+terminate called after throwing an instance of 'terminate called recursively
+terminate called recursively
+std::bad_alloc'
+Command terminated by signal 6
+AB stage3 wall 3.89 user 2.86 sys 0.67
+AB nolookup wall 1.39 user 4.65 sys 0.48
+AB noerec wall 1.19 user 4.18 sys 0.43
+AB pgo_bin wall 1.31 user 4.60 sys 0.48
+AB base wall 1.32 user 4.61 sys 0.48
+AB cand wall 1.32 user 4.63 sys 0.45
+AB stage1 wall 0.49 user 1.64 sys 0.21
+FAIL stage2 rc=134
+[   66.76 ms] small tables joined
+[  557.34 ms] parsed events+clicks
+[  557.54 ms] dedup
+terminate called after throwing an instance of 'std::bad_alloc'
+terminate called recursively
+  what():  std::bad_alloc
+Command terminated by signal 6
+AB stage2 wall 3.65 user 2.00 sys 0.67
+FAIL stage3 rc=134
+[   86.26 ms] links done
+[   86.29 ms] small tables joined
+[  815.27 ms] parsed events+clicks
+[  815.44 ms] dedup
+terminate called after throwing an instance of 'std::bad_alloc'
+terminate called recursively
+Command terminated by signal 6
+AB stage3 wall 4.06 user 2.85 sys 0.66
+AB nolookup wall 1.39 user 4.62 sys 0.54
+AB noerec wall 1.19 user 4.19 sys 0.42
+AB pgo_bin wall 1.32 user 4.59 sys 0.46
+AB base wall 1.32 user 4.65 sys 0.46
+AB cand wall 1.68 user 4.66 sys 0.48
+AB stage1 wall 0.59 user 1.66 sys 0.21
+FAIL stage2 rc=134
+[   66.17 ms] small tables joined
+[  555.82 ms] parsed events+clicks
+[  556.02 ms] dedup
+terminate called after throwing an instance of 'std::bad_alloc'
+terminate called recursively
+  what():  std::bad_alloc
+Command terminated by signal 6
+AB stage2 wall 3.67 user 2.00 sys 0.66
+FAIL stage3 rc=134
+[   86.47 ms] small tables joined
+[  817.03 ms] parsed events+clicks
+[  817.22 ms] dedup
+terminate called after throwing an instance of 'std::bad_alloc'
+terminate called recursively
+terminate called recursively
+Command terminated by signal 6
+AB stage3 wall 3.90 user 2.83 sys 0.67
+AB nolookup wall 1.38 user 4.64 sys 0.49
+AB noerec wall 1.21 user 4.16 sys 0.46
+AB pgo_bin wall 1.33 user 4.57 sys 0.48
+AB base wall 1.33 user 4.64 sys 0.45
+AB cand wall 1.33 user 4.60 sys 0.48
+AB stage1 wall 0.49 user 1.65 sys 0.19
+FAIL stage2 rc=134
+[   66.84 ms] small tables joined
+[  560.02 ms] parsed events+clicks
+[  560.22 ms] dedup
+terminate called after throwing an instance of 'std::bad_alloc'
+terminate called recursively
+  what():  std::bad_alloc
+Command terminated by signal 6
+AB stage2 wall 3.54 user 1.96 sys 0.69
+FAIL stage3 rc=134
+[   83.61 ms] links done
+[   83.64 ms] small tables joined
+[  827.84 ms] parsed events+clicks
+[  828.02 ms] dedup
+terminate called after throwing an instance of 'terminate called recursively
+terminate called recursively
+Command terminated by signal 6
+AB stage3 wall 3.77 user 2.82 sys 0.65
+AB nolookup wall 1.41 user 4.66 sys 0.50
+AB noerec wall 1.19 user 4.19 sys 0.41
+AB pgo_bin wall 1.31 user 4.64 sys 0.44
+AB base wall 1.31 user 4.63 sys 0.46
+-- last base phases
+[    0.11 ms] small tables
+[    3.26 ms] mapped
+[   29.33 ms] links parsed
+[   66.19 ms] links done
+[   66.23 ms] small tables joined
+[  960.71 ms] parsed events+clicks
+[ 1021.22 ms] dedup
+[ 1284.04 ms] persons
+  person cpu-ms: group 91.9 scatter 247.1 names 0.0 process 516.4
+[ 1285.87 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1292.30 ms] released
+AB base wall 1.31 user 4.63 sys 0.46
+AB cand wall 1.32 user 4.63 sys 0.47
+-- last cand phases
+[    0.10 ms] small tables
+[    3.24 ms] mapped
+[   30.45 ms] links parsed
+[   67.52 ms] links done
+[   67.56 ms] small tables joined
+[  962.53 ms] parsed events+clicks
+[ 1023.21 ms] dedup
+[ 1288.78 ms] persons
+  person cpu-ms: group 90.3 scatter 241.1 names 0.0 process 530.1
+[ 1290.64 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1297.37 ms] released
+AB cand wall 1.32 user 4.63 sys 0.47
+AB stage1 wall 0.49 user 1.63 sys 0.22
+-- last stage1 phases
+[    0.11 ms] small tables
+[    3.45 ms] mapped
+[   31.02 ms] links parsed
+[   68.77 ms] links done
+[   68.81 ms] small tables joined
+[  472.22 ms] parsed events+clicks
+[  472.39 ms] dedup
+[  473.03 ms] persons
+  person cpu-ms: group 0.0 scatter 0.0 names 0.0 process 0.0
+[  473.72 ms] written
+event lines 21581187 valid-copies 650664872 clicks 5082862 user_daily rows 0 P=9 Q=11
+[  478.24 ms] released
+AB stage1 wall 0.49 user 1.63 sys 0.22
+FAIL stage2 rc=134
+[   66.31 ms] small tables joined
+[  554.85 ms] parsed events+clicks
+[  555.03 ms] dedup
+terminate called after throwing an instance of 'std::bad_alloc'
+  what():  terminate called recursively
+terminate called recursively
+Command terminated by signal 6
+AB stage2 wall 3.57 user 1.97 sys 0.67
+-- last stage2 phases
+[    0.11 ms] small tables
+[    3.41 ms] mapped
+[   30.26 ms] links parsed
+[   66.27 ms] links done
+[   66.31 ms] small tables joined
+[  554.85 ms] parsed events+clicks
+[  555.03 ms] dedup
+terminate called after throwing an instance of 'std::bad_alloc'
+  what():  terminate called recursively
+terminate called recursively
+Command terminated by signal 6
+AB stage2 wall 3.57 user 1.97 sys 0.67
+FAIL stage3 rc=134
+[  817.99 ms] parsed events+clicks
+[  818.19 ms] dedup
+terminate called after throwing an instance of 'std::bad_alloc'
+terminate called recursively
+terminate called recursively
+terminate called recursively
+Command terminated by signal 6
+AB stage3 wall 3.71 user 2.81 sys 0.64
+-- last stage3 phases
+[    0.14 ms] small tables
+[    3.65 ms] mapped
+[   35.21 ms] links parsed
+[   82.33 ms] links done
+[   82.36 ms] small tables joined
+[  817.99 ms] parsed events+clicks
+[  818.19 ms] dedup
+terminate called after throwing an instance of 'std::bad_alloc'
+terminate called recursively
+terminate called recursively
+terminate called recursively
+Command terminated by signal 6
+AB stage3 wall 3.71 user 2.81 sys 0.64
+AB nolookup wall 1.38 user 4.63 sys 0.49
+-- last nolookup phases
+[    0.11 ms] small tables
+[    3.89 ms] mapped
+[   40.42 ms] links parsed
+[   86.69 ms] links done
+[   86.73 ms] small tables joined
+[  980.38 ms] parsed events+clicks
+[ 1037.71 ms] dedup
+[ 1345.44 ms] persons
+  person cpu-ms: group 105.0 scatter 233.3 names 0.0 process 679.0
+[ 1347.57 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 3559045 P=9 Q=11
+[ 1354.12 ms] released
+AB nolookup wall 1.38 user 4.63 sys 0.49
+AB noerec wall 1.20 user 4.19 sys 0.43
+-- last noerec phases
+[    0.14 ms] small tables
+[    3.44 ms] mapped
+[   28.77 ms] links parsed
+[   68.06 ms] links done
+[   68.11 ms] small tables joined
+[  907.35 ms] parsed events+clicks
+[  908.92 ms] dedup
+[ 1168.08 ms] persons
+  person cpu-ms: group 73.4 scatter 239.4 names 0.0 process 526.4
+[ 1169.87 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2255146 P=9 Q=11
+[ 1175.56 ms] released
+AB noerec wall 1.20 user 4.19 sys 0.43
+AB pgo_bin wall 1.31 user 4.58 sys 0.47
+-- last pgo_bin phases
+[    0.11 ms] small tables
+[    3.52 ms] mapped
+[   31.07 ms] links parsed
+[   67.93 ms] links done
+[   67.97 ms] small tables joined
+[  957.67 ms] parsed events+clicks
+[ 1016.97 ms] dedup
+[ 1278.37 ms] persons
+  person cpu-ms: group 98.1 scatter 234.0 names 0.0 process 515.2
+[ 1280.15 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1286.66 ms] released
+AB pgo_bin wall 1.31 user 4.58 sys 0.47
+SUMMARY base      : median wall 1.320s  min 1.310s  median user 4.63s  ratio 1.000
+SUMMARY cand      : median wall 1.320s  min 1.310s  median user 4.63s  ratio 1.000
+SUMMARY stage1    : median wall 0.490s  min 0.490s  median user 1.65s  ratio 0.371
+SUMMARY stage2    : median wall 3.605s  min 3.450s  median user 1.98s  ratio 2.731
+SUMMARY stage3    : median wall 3.870s  min 3.710s  median user 2.83s  ratio 2.932
+SUMMARY nolookup  : median wall 1.385s  min 1.380s  median user 4.63s  ratio 1.049
+SUMMARY noerec    : median wall 1.200s  min 1.190s  median user 4.19s  ratio 0.909
+SUMMARY pgo_bin   : median wall 1.310s  min 1.310s  median user 4.58s  ratio 0.992
+== perf by symbol
+    47.24%  [.] events_chunk(TCtx&, MFile const&, unsigned long, unsigned long)
+    14.70%  [.] person_partition(TCtx&, unsigned int)
+     9.68%  [.] flushE(TCtx&, PendE*, int)
+     8.17%  [.] clicks_chunk(TCtx&, MFile const&, unsigned long, unsigned long)
+     3.39%  [.] dedup_partition(TCtx&, unsigned int)
+     1.75%  [k] kernel_init_pages
+     1.47%  [.] flushC(TCtx&, PendC*, int)
+     1.26%  [k] do_user_addr_fault
+     0.83%  [.] __memmove_avx_unaligned_erms
+     0.71%  [k] _raw_spin_unlock_irqrestore
+     0.63%  [.] __memset_avx2_unaligned_erms
+     0.61%  [.] unsigned long& std::vector<unsigned long, std::allocator<unsigned long> >::emplace_back<unsigned long>(unsigned long&&) [clone .isra.0]
+     0.53%  [.] links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#1}::operator()(int) const
+     0.51%  [.] int& std::vector<int, std::allocator<int> >::emplace_back<int>(int&&) [clone .isra.0]
+     0.46%  [.] write_user_daily(TCtx&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+     0.45%  [.] links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)
+     0.42%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#2}>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#2}&&)::{lambda()#1}> > >::_M_run()
+     0.35%  [.] __memcmp_avx2_movbe
+     0.32%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#4}>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#4}&&)::{lambda()#1}> > >::_M_run()
+     0.30%  [k] do_anonymous_page
+     0.25%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#7}>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#7}&&)::{lambda()#1}> > >::_M_run()
+     0.24%  [k] __handle_mm_fault
+     0.17%  [k] __rmqueue_pcplist
+     0.16%  [k] lruvec_stat_mod_folio
+     0.14%  [k] handle_pte_fault
+     0.14%  [k] lock_vma_under_rcu
+     0.14%  [k] mas_walk
+     0.13%  [k] copy_folio_from_iter_atomic
+     0.12%  [k] mod_memcg_lruvec_state
+     0.12%  [k] zap_present_ptes.constprop.0
+== perf by srcline (top)
+     2.57%  avx2intrin.h:233
+     2.29%  pipeline.cpp:564
+     2.25%  pipeline.cpp:565
+     2.11%  pipeline.cpp:563
+     2.00%  ??:0
+     1.70%  pipeline.cpp:1074
+     1.70%  pipeline.cpp:222
+     1.70%  kernel_init_pages+58
+     1.63%  pipeline.cpp:1067
+     1.63%  pipeline.cpp:176
+     1.53%  bmiintrin.h:192
+     1.51%  pipeline.cpp:740
+     1.50%  pipeline.cpp:1674
+     1.42%  pipeline.cpp:1497
+     1.41%  pipeline.cpp:842
+     1.40%  pipeline.cpp:1412
+     1.35%  pipeline.cpp:562
+     1.26%  pipeline.cpp:498
+     1.15%  pipeline.cpp:1075
+     1.15%  pipeline.cpp:497
+     1.13%  do_user_addr_fault+200
+     1.13%  pipeline.cpp:2004
+     1.01%  pipeline.cpp:843
+     0.99%  pipeline.cpp:716
+     0.96%  pipeline.cpp:188
+     0.95%  pipeline.cpp:561
+     0.87%  pipeline.cpp:707
+     0.87%  pipeline.cpp:449
+     0.86%  pipeline.cpp:720
+     0.85%  pipeline.cpp:453
+     0.82%  pipeline.cpp:1899
+     0.77%  pipeline.cpp:784
+     0.77%  pipeline.cpp:1662
+     0.73%  pipeline.cpp:187
+     0.71%  pipeline.cpp:201
+     0.71%  _raw_spin_unlock_irqrestore+33
+     0.69%  pipeline.cpp:172
+     0.69%  vector.tcc:119
+     0.67%  pipeline.cpp:1777
+     0.66%  pipeline.cpp:1427
+     0.63%  pipeline.cpp:1967
+     0.63%  pipeline.cpp:2000
+     0.63%  pipeline.cpp:703
+     0.61%  pipeline.cpp:846
+     0.61%  pipeline.cpp:787
+     0.60%  pipeline.cpp:1567
+     0.58%  pipeline.cpp:734
+     0.57%  pipeline.cpp:515
+     0.56%  stl_vector.h:1264
+     0.53%  pipeline.cpp:2085
+     0.50%  pipeline.cpp:488
+     0.49%  pipeline.cpp:1594
+     0.49%  vector.tcc:114
+     0.47%  pipeline.cpp:742
+     0.43%  pipeline.cpp:1537
+     0.43%  pipeline.cpp:2135
+     0.42%  pipeline.cpp:552
+     0.42%  pipeline.cpp:1543
+     0.41%  pipeline.cpp:489
+     0.41%  pipeline.cpp:736
+     0.41%  pipeline.cpp:2075
+     0.39%  pipeline.cpp:1550
+     0.39%  atomic_base.h:501
+     0.38%  pipeline.cpp:189
+     0.38%  stl_algo.h:1994
+     0.36%  pipeline.cpp:782
+     0.35%  pipeline.cpp:206
+     0.34%  pipeline.cpp:394
+     0.34%  pipeline.cpp:748
+     0.33%  pipeline.cpp:775
+     0.33%  smmintrin.h:843
+     0.33%  pipeline.cpp:1850
+     0.32%  pipeline.cpp:1775
+     0.32%  pipeline.cpp:569
+     0.31%  pipeline.cpp:1593
+     0.31%  pipeline.cpp:194
+     0.31%  pipeline.cpp:560
+     0.31%  pipeline.cpp:2090
+     0.30%  pipeline.cpp:1073
+     0.30%  pipeline.cpp:750
+     0.29%  pipeline.cpp:1907
+     0.29%  pipeline.cpp:737
+     0.29%  pipeline.cpp:706
+     0.28%  pipeline.cpp:494
+     0.28%  pipeline.cpp:514
+     0.28%  pipeline.cpp:727
+     0.27%  pipeline.cpp:1776
+     0.27%  pipeline.cpp:1488
+     0.27%  pipeline.cpp:1774
+     0.27%  pipeline.cpp:1965
+     0.27%  pipeline.cpp:721
+     0.27%  pipeline.cpp:448
+     0.26%  pipeline.cpp:529
+     0.26%  pipeline.cpp:753
+     0.26%  pipeline.cpp:1678
+     0.26%  pipeline.cpp:509
+     0.25%  pipeline.cpp:1424
+     0.25%  pipeline.cpp:1999
+     0.25%  pipeline.cpp:447
+     0.25%  pipeline.cpp:739
+     0.25%  stl_algobase.h:1509
+     0.24%  pipeline.cpp:1671
+     0.24%  pipeline.cpp:709
+     0.24%  pipeline.cpp:196
+     0.23%  pipeline.cpp:1634
+     0.23%  pipeline.cpp:1491
+     0.22%  pipeline.cpp:1226
+     0.22%  pipeline.cpp:566
+     0.22%  pipeline.cpp:556
+     0.22%  pipeline.cpp:920
+     0.21%  pipeline.cpp:359
+     0.21%  pipeline.cpp:360
+     0.21%  pipeline.cpp:555
+     0.21%  pipeline.cpp:776
+     0.21%  pipeline.cpp:749
+     0.20%  pipeline.cpp:1204
+     0.20%  pipeline.cpp:568
+     0.20%  pipeline.cpp:175
+     0.20%  pipeline.cpp:710
+     0.20%  string_fortified.h:29
