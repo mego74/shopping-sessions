@@ -1,0 +1,22 @@
+commit 9fb8ca35ed71af37d708b46a178d7660848ac5a7
+CPU(s):                                  4
+Model name:                              AMD EPYC 7763 64-Core Processor
+L2 cache:                                1 MiB (2 instances)
+L3 cache:                                32 MiB (1 instance)
+7.0.0-1020-azure
+thp always [madvise] never
+baseline c2864db
+variant q512: -DQDIV=48000.0
+variant usewc: -DUSEWC
+variant pend32: -DPEND=32
+variant p256: -DPDIV=120000.0
+variant linesimd: -DLINESIMD
+== correctness
+36/36 fixtures passed
+MATCH
+AB base wall 1.39 user 4.87 sys 0.40
+AB cand wall 1.32 user 4.71 sys 0.42
+AB q512 wall 1.34 user 4.82 sys 0.39
+AB usewc wall 1.33 user 4.71 sys 0.43
+AB pend32 wall 1.32 user 4.73 sys 0.40
+AB p256 wall 1.34 user 4.81 sys 0.39
