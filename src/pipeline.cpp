@@ -610,6 +610,10 @@ struct CK {
   u64 key;
   u64 idp;
 };
+struct CStat {
+  u32 sess, purch, assist, pad;
+  u64 rev;
+};
 struct CampState {
   u32 stamp, a, b, pad;
 };
@@ -639,6 +643,8 @@ struct TCtx {
   Buf<u32> clp;
   Buf<CK> cktmp;
   Buf<CK> ck;
+  Buf<CK> cktmp2;
+  Buf<u32> clp2;
   Buf<u32> s_start;
   Buf<u16> s_day;
   Buf<u64> s_rev;
@@ -655,8 +661,7 @@ struct TCtx {
   std::vector<i32> o_day, o_sess, o_ev;
   std::vector<i64> o_rev;
   std::vector<i16> o_cat;
-  std::vector<u32> c_sess, c_purch, c_assist;
-  std::vector<u64> c_rev;
+  std::vector<CStat> cs_;
 };
 static TCtx* TC = nullptr;
 
@@ -1075,8 +1080,7 @@ static inline u64 resolve_name(u64 pk) {
 }
 
 static void process_person(TCtx& W, Pers& P, u64* ev, CK* ck) {
-  const u32 n = P.cnt, m = P.ccnt;
-  if (m > 1) sort_ck(ck, m);
+  const u32 n = P.cnt, m = P.ccnt;  // ev in bucket order, ck sorted by ts
   W.s_start.ensure(n);
   W.s_day.ensure(n);
   W.s_rev.ensure(n);
@@ -1154,10 +1158,11 @@ static void process_person(TCtx& W, Pers& P, u64* ev, CK* ck) {
   const u32 org = (u32)NC;
   auto add = [&](u32 c, u32 d, u64 rev) {
     size_t ix = (size_t)c * ND + d;
-    W.c_sess[ix]++;
+    CStat& st = W.cs_[ix];
+    st.sess++;
     if (rev) {
-      W.c_purch[ix]++;
-      W.c_rev[ix] += rev;
+      st.purch++;
+      st.rev += rev;
     }
   };
   if (m == 0) {
@@ -1199,10 +1204,10 @@ static void process_person(TCtx& W, Pers& P, u64* ev, CK* ck) {
     u32 hi = b - WEEK;
     u32 i0 = (u32)(std::lower_bound(ss, ss + ns, lo) - ss);
     u32 i1 = (u32)(std::upper_bound(ss + i0, ss + ns, hi) - ss);
-    u32* asst = W.c_assist.data() + (size_t)c * ND;
+    CStat* asst = W.cs_.data() + (size_t)c * ND;
     while (i0 < i1) {
       u32 e2 = std::min(i1, nds[i0]);
-      asst[sd[i0]] += e2 - i0;
+      asst[sd[i0]].assist += e2 - i0;
       i0 = e2;
     }
   };
@@ -1382,9 +1387,39 @@ static void person_partition(TCtx& W, u32 p) {
   }
   W.ck.ensure(kc + 1);
   CK* ck = W.ck.p;
-  for (size_t i = 0; i < kc; i++) {
-    Pers& P = PS[clp[i]];
-    ck[P.coff + P.ccnt++] = ckt[i];
+  {
+    W.cktmp2.ensure(kc + 1);
+    W.clp2.ensure(kc + 1);
+    CK* a = ckt;
+    u32* la = clp;
+    CK* b = W.cktmp2.p;
+    u32* lb = W.clp2.p;
+    static const int SH[3] = {32, 43, 54};
+    static const u32 MK[3] = {2047, 2047, 1023};
+    u32 cnt[2048];
+    for (int pass = 0; pass < 3; pass++) {
+      const int sh = SH[pass];
+      const u32 mk = MK[pass];
+      memset(cnt, 0, sizeof(u32) * (mk + 1));
+      for (size_t i = 0; i < kc; i++) cnt[(a[i].key >> sh) & mk]++;
+      u32 sum = 0;
+      for (u32 i = 0; i <= mk; i++) {
+        u32 c = cnt[i];
+        cnt[i] = sum;
+        sum += c;
+      }
+      for (size_t i = 0; i < kc; i++) {
+        u32 d = cnt[(a[i].key >> sh) & mk]++;
+        b[d] = a[i];
+        lb[d] = la[i];
+      }
+      std::swap(a, b);
+      std::swap(la, lb);
+    }
+    for (size_t i = 0; i < kc; i++) {
+      Pers& P = PS[la[i]];
+      ck[P.coff + P.ccnt++] = a[i];
+    }
   }
   double tg2 = nowd();
   // names: copy each person's name once into the thread arena (prefetched)
@@ -1744,6 +1779,7 @@ int main(int argc, char** argv) {
     ND = (int)(((WE - 1) - DAY0 * DAYMS) / DAYMS + 1);
     if (WE - WS > 49LL * DAYMS) die("window too long");
   }
+  std::thread small_thr([&]() {
   // products & categories
   {
     std::vector<std::pair<std::string, std::string>> rows;
@@ -1777,14 +1813,34 @@ int main(int argc, char** argv) {
     NC = (int)CAMPS.str.size();
     if (NC > 65000) die("too many campaigns");
   }
+  });
   logt("small tables");
 
   std::vector<std::string> evp = list_csv(DATA + "/events"), ckp = list_csv(DATA + "/clicks"),
                            lkp = list_csv(DATA + "/links");
-  std::vector<MFile> evf, ckf, lkf;
-  for (auto& s : evp) evf.push_back(map_file(s));
-  for (auto& s : ckp) ckf.push_back(map_file(s));
-  for (auto& s : lkp) lkf.push_back(map_file(s));
+  std::vector<MFile> evf(evp.size()), ckf(ckp.size()), lkf(lkp.size());
+  {
+    struct MJ {
+      const std::string* path;
+      MFile* dst;
+    };
+    std::vector<MJ> mj;
+    for (size_t i = 0; i < lkp.size(); i++) mj.push_back({&lkp[i], &lkf[i]});
+    for (size_t i = 0; i < evp.size(); i++) mj.push_back({&evp[i], &evf[i]});
+    for (size_t i = 0; i < ckp.size(); i++) mj.push_back({&ckp[i], &ckf[i]});
+    std::atomic<size_t> nx{0};
+    std::vector<std::thread> th;
+    int nm = std::max(1, NT - 1);
+    for (int t = 0; t < nm; t++)
+      th.emplace_back([&]() {
+        for (;;) {
+          size_t i = nx.fetch_add(1);
+          if (i >= mj.size()) break;
+          *mj[i].dst = map_file(*mj[i].path);
+        }
+      });
+    for (auto& x : th) x.join();
+  }
   u64 evbytes = 0;
   for (auto& f : evf) evbytes += f.n;
   {
@@ -1804,6 +1860,8 @@ int main(int argc, char** argv) {
   logt("mapped");
 
   links_phase(lkf);
+  small_thr.join();
+  logt("small tables joined");
 
   // parse events + clicks
   {
@@ -1862,10 +1920,7 @@ int main(int argc, char** argv) {
       W.catrev.assign(CATS.size(), 0);
       W.cst.assign(NC + 1, CampState{0, 0, 0, 0});
       size_t cd = (size_t)(NC + 1) * ND;
-      W.c_sess.assign(cd, 0);
-      W.c_purch.assign(cd, 0);
-      W.c_assist.assign(cd, 0);
-      W.c_rev.assign(cd, 0);
+      W.cs_.assign(cd, CStat{0, 0, 0, 0, 0});
       for (;;) {
         u32 i = next.fetch_add(1);
         if (i >= P) break;
@@ -1894,10 +1949,11 @@ int main(int argc, char** argv) {
         std::vector<u64> s(cd, 0), pu(cd, 0), as(cd, 0), rv(cd, 0);
         for (int u = 0; u < NT; u++)
           for (size_t i = 0; i < cd; i++) {
-            s[i] += TC[u].c_sess[i];
-            pu[i] += TC[u].c_purch[i];
-            as[i] += TC[u].c_assist[i];
-            rv[i] += TC[u].c_rev[i];
+            const CStat& x = TC[u].cs_[i];
+            s[i] += x.sess;
+            pu[i] += x.purch;
+            as[i] += x.assist;
+            rv[i] += x.rev;
           }
         std::vector<ColDef> defs = {{"campaign_id", PT_BYTE_ARRAY, 0, 1, false},
                                     {"channel", PT_BYTE_ARRAY, 0, 1, false},
