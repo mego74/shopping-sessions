@@ -1,0 +1,4 @@
+icx -mtune=icelake-server
+o2 -O2
+flatfn -DFLATFN
+notune -mtune=generic

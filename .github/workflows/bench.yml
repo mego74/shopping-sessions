@@ -35,27 +35,17 @@ jobs:
           R=results/$(git rev-parse --short HEAD)-${{ matrix.job }}.txt
           BASE=$(cat .github/bench-base 2>/dev/null || git rev-parse origin/main)
           echo "baseline $BASE" | tee -a $R
-          CXX="g++ -O3 -march=x86-64-v3 -mtune=cascadelake -std=c++17 -pthread -static"
+          # the scorer's image builds with clang (Dockerfile); compare variants with the runner's clang
+          CXX="clang++ -O3 -march=x86-64-v3 -mtune=cascadelake -std=c++17 -pthread -static"
+          clang++ --version | head -1 | tee -a $R
           $CXX -g -o /tmp/cand src/pipeline.cpp
           git show $BASE:src/pipeline.cpp > /tmp/base.cpp && $CXX -o /tmp/base /tmp/base.cpp
           echo "base cand" > /tmp/bins
           # optional variants: lines "name -DFLAG ..." in .github/bench-variants
           if [ -f .github/bench-variants ]; then while read -r name flags; do [ -z "$name" ] && continue
             $CXX $flags -o /tmp/$name src/pipeline.cpp && echo -n " $name" >> /tmp/bins; echo "variant $name: $flags" | tee -a $R; done < .github/bench-variants; fi
-          # PGO variant: instrumented build trained on a 1M-event dev set, then rebuilt with the profile
-          /tmp/generator/target/release/generate --seed 3 --events 1000000 --clicks 250000 --output /tmp/train >/dev/null
-          mkdir -p /tmp/pgo && cd /tmp/pgo && cp $GITHUB_WORKSPACE/src/pipeline.cpp . 
-          $CXX -fprofile-generate -fprofile-update=atomic -c -o pipeline.o pipeline.cpp && $CXX -fprofile-generate -o /tmp/pgogen pipeline.o
-          rm -rf /tmp/tout; NCPU=4 /tmp/pgogen /tmp/train /tmp/tout && rm -rf /tmp/tout && NCPU=4 /tmp/pgogen /tmp/train /tmp/tout; ls -la /tmp/pgo | tee -a $GITHUB_WORKSPACE/$R
-          $CXX -fprofile-use -fprofile-correction -c -o pipeline.o pipeline.cpp 2>&1 | head -5 | tee -a $GITHUB_WORKSPACE/$R; $CXX -o /tmp/pgo_bin pipeline.o && echo -n " pgo_bin" >> /tmp/bins
-          cd $GITHUB_WORKSPACE
-          # clang build of the candidate (static, same target flags)
-          for CC in clang++-18 clang++; do if command -v $CC >/dev/null; then
-            $CC --version | head -1 | tee -a $R
-            $CC -O3 -march=x86-64-v3 -mtune=cascadelake -std=c++17 -pthread -static -o /tmp/clang_bin src/pipeline.cpp 2>&1 | tail -3 | tee -a $R && echo -n " clang_bin" >> /tmp/bins; break; fi; done
-          # clang builds inside candidate Dockerfiles (the toolchain the scorer would use)
-          for v in trixie noble; do if [ -f docker/Dockerfile.clang-$v ]; then
-            if docker build -q -f docker/Dockerfile.clang-$v -t ss:$v . > /tmp/db_$v.txt 2>&1; then id=$(docker create ss:$v) && docker cp $id:/pipeline /tmp/c_$v && docker rm $id >/dev/null && echo -n " c_$v" >> /tmp/bins; echo "docker clang $v built" | tee -a $R; else echo "docker clang $v FAILED" | tee -a $R; tail -5 /tmp/db_$v.txt | tee -a $R; fi; fi; done
+          # gcc build of the candidate for reference
+          g++ -O3 -march=x86-64-v3 -mtune=cascadelake -std=c++17 -pthread -static -o /tmp/gcc_bin src/pipeline.cpp && echo -n " gcc_bin" >> /tmp/bins
           tr -d '\n' < /tmp/bins > /tmp/bins2; echo >> /tmp/bins2; cat /tmp/bins2
       - name: Correctness gate (scorer build flags)
         run: |
@@ -66,7 +56,7 @@ jobs:
           /tmp/generator/target/release/generate --seed 1 --events 1000000 --clicks 250000 --output /tmp/dev >/dev/null
           SD=$(dirname $(find /tmp/st -name run_fixtures.py | head -1)); FX=$(find /tmp/st -type d -name fixtures | head -1); DA=$(dirname $(find /tmp/da -name user_daily.csv | head -1))
           cd $GITHUB_WORKSPACE
-          for B in cand pgo_bin clang_bin c_trixie c_noble; do [ -x /tmp/$B ] || continue
+          for B in cand gcc_bin; do [ -x /tmp/$B ] || continue
             { echo "== correctness $B"; NCPU=4 python3 $SD/run_fixtures.py $FX -- /tmp/$B | tail -1
               rm -rf /tmp/devout; NCPU=4 /tmp/$B /tmp/dev /tmp/devout && (cd $SD && python3 compare.py /tmp/devout $DA | tail -1); } 2>&1 | tee -a $R; done
       - name: A/B timing
