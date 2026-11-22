@@ -1343,7 +1343,7 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
 
 // ---------------------------------------------------------------- events & clicks parse
 #ifndef PEND
-#define PEND 16
+#define PEND 32
 #endif
 struct PendE {
   u64 huid, np, ekey;
@@ -1478,7 +1478,7 @@ static inline void flushC(TCtx& W, PendC* pc, int n) {
 }
 
 #ifndef PEND
-#define PEND 16
+#define PEND 32
 #endif
 
 static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
@@ -2003,6 +2003,31 @@ static void person_partition(TCtx& W, u32 p) {
   }
   W.ck.ensure(kc + 1);
   CK* ck = W.ck.p;
+#ifdef CLICKSORT
+  // scatter clicks to their person, then sort each person's (usually short) list by time
+  for (size_t i = 0; i < kc; i++) {
+    LPS& P = L[clp[i]];
+    ck[P.coff + P.ccnt++] = ckt[i];
+  }
+  for (u32 lp : act) {
+    const LPS& P = L[lp];
+    CK* a = ck + P.coff;
+    const u32 m = P.ccnt;
+    if (m <= 1) continue;
+    if (m <= 32) {
+      for (u32 i = 1; i < m; i++) {
+        CK v = a[i];
+        u32 j = i;
+        while (j > 0 && a[j - 1].key > v.key) {
+          a[j] = a[j - 1];
+          j--;
+        }
+        a[j] = v;
+      }
+    } else
+      std::sort(a, a + m, [](const CK& x, const CK& y) { return x.key < y.key; });
+  }
+#else
   {
     W.cktmp2.ensure(kc + 1);
     W.clp2.ensure(kc + 1);
@@ -2037,6 +2062,7 @@ static void person_partition(TCtx& W, u32 p) {
       ck[P.coff + P.ccnt++] = a[i];
     }
   }
+#endif
   // purchases (skip copies that lost deduplication)
   W.utmp.ensure(nup + 1);
   W.ulp.ensure(nup + 1);

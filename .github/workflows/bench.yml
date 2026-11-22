@@ -42,6 +42,11 @@ jobs:
           # optional variants: lines "name -DFLAG ..." in .github/bench-variants
           if [ -f .github/bench-variants ]; then while read -r name flags; do [ -z "$name" ] && continue
             $CXX $flags -o /tmp/$name src/pipeline.cpp && echo -n " $name" >> /tmp/bins; echo "variant $name: $flags" | tee -a $R; done < .github/bench-variants; fi
+          # PGO variant: instrumented build trained on a 1M-event dev set, then rebuilt with the profile
+          /tmp/generator/target/release/generate --seed 3 --events 1000000 --clicks 250000 --output /tmp/train >/dev/null
+          mkdir -p /tmp/pgo && $CXX -fprofile-generate -fprofile-update=atomic -fprofile-dir=/tmp/pgo -o /tmp/pgogen src/pipeline.cpp
+          rm -rf /tmp/tout; NCPU=4 /tmp/pgogen /tmp/train /tmp/tout && rm -rf /tmp/tout && NCPU=4 /tmp/pgogen /tmp/train /tmp/tout
+          $CXX -fprofile-use -fprofile-correction -fprofile-dir=/tmp/pgo -Wno-missing-profile -o /tmp/pgo_bin src/pipeline.cpp && echo -n " pgo_bin" >> /tmp/bins
           tr -d '\n' < /tmp/bins > /tmp/bins2; echo >> /tmp/bins2; cat /tmp/bins2
       - name: Correctness gate (scorer build flags)
         run: |

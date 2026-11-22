@@ -1,3 +1,1 @@
-usewc -DUSEWC
-pend32 -DPEND=32
-linesimd -DLINESIMD
+clicksort -DCLICKSORT
