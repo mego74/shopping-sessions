@@ -1537,6 +1537,14 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
     u32 lo, hi;
     drange(t, lo, hi);
     for (u32 i = lo; i < hi; i++) {
+#ifndef NOLPF
+      if (i + 16 < hi) {  // parent (usually the root) and its best-name slot, a few ids ahead
+        const u32 pp = PAR[i + 16].load(std::memory_order_relaxed);
+        __builtin_prefetch(&PAR[pp]);
+        __builtin_prefetch(&BEST[pp]);
+        __builtin_prefetch(&PRE[i + 16]);
+      }
+#endif
       if (!DSLOT[i]) continue;
       u32 r = uf_find(i);
 #ifndef OLDROOT
@@ -1571,17 +1579,28 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
     u32 lo, hi;
     drange(t, lo, hi);
     u32 k = nroot[t];
-    for (u32 i = lo; i < hi; i++)
+    for (u32 i = lo; i < hi; i++) {
+#ifndef NOLPF
+      if (i + 16 < hi && PAR[i + 16].load(std::memory_order_relaxed) == i + 16)
+        __builtin_prefetch(&IDP[BEST[i + 16].load(std::memory_order_relaxed)]);
+#endif
       if (DSLOT[i] && PAR[i].load(std::memory_order_relaxed) == i) {
         RPID[i] = k;
         NAMEP[k] = IDP[BEST[i].load(std::memory_order_relaxed)];
         k++;
       }
+    }
   });
   par_run([&](int t) {
     u32 lo, hi;
     drange(t, lo, hi);
     for (u32 i = lo; i < hi; i++) {
+#ifndef NOLPF
+      if (i + 16 < hi && DSLOT[i + 16]) {
+        __builtin_prefetch(&IDS[DSLOT[i + 16] - 1], 1);
+        __builtin_prefetch(&RPID[PAR[i + 16].load(std::memory_order_relaxed)]);
+      }
+#endif
       if (!DSLOT[i]) continue;
 #ifndef OLDROOT
       IDS[DSLOT[i] - 1].pid1.store(RPID[PAR[i].load(std::memory_order_relaxed)] + 1, std::memory_order_relaxed);
