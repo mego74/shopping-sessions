@@ -1,4 +1,1 @@
-oldnames -DOLDNAMES
-norows -DDIAG_NOROWS
-noattr -DDIAG_NOATTR
-noassist -DDIAG_NOASSIST
+ck2p -DCK2P
