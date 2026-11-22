@@ -1223,6 +1223,9 @@ struct alignas(64) Strm {
 #ifndef PFW
 #define PFW 64
 #endif
+#if !defined(NOCK2P) && !defined(CK2P)
+#define CK2P 1
+#endif
 #if !defined(NOPACKSC) && !defined(PACKSC)
 #define PACKSC 1
 #endif
