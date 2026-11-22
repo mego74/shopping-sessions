@@ -308,6 +308,13 @@ struct Fld {
   const char* p;
   u32 n;
 };
+// The fields of one line as offsets from a base pointer (filled 8 lanes at a time).
+struct LineF {
+  const char* q;
+  alignas(32) u32 off[8];
+  alignas(32) u32 len[8];
+  AI Fld operator[](int i) const { return Fld{q + off[i], len[i]}; }
+};
 
 // Parses one line starting at ls. Returns true iff well-formed with exactly NF fields.
 // Fields split on every ','; a field is quoted iff its first byte is '"', then its last byte must be
@@ -540,6 +547,7 @@ static AI void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line) {
   const char* base = f.p;
   const u64 lim = (f.n + 63) & ~(u64)63;
   Fld fl[NF];
+  LineF LF;
   while (ls < e) {
     const u64 wb = ls & ~(u64)63;
     const u64 we = std::min(lim, wb + FLAT_W);
@@ -550,11 +558,19 @@ static AI void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line) {
       Scanner sc;
       sc.init(base, ls);
       u64 nx;
-      if (parse_line<NF>(sc, base, fl, ls, nx)) on_line(fl);
+      if (parse_line<NF>(sc, base, fl, ls, nx)) {
+        LF.q = base + ls;
+        for (int i = 0; i < NF; i++) {
+          LF.off[i] = (u32)(fl[i].p - LF.q);
+          LF.len[i] = fl[i].n;
+        }
+        on_line(LF);
+      }
       ls = nx;
       continue;
     }
     const char* q = base + wb;
+    LF.q = q;
     u32 ci = 0, prevq = 0;
     u32 lsq = base[ls] == '"';  // first field of the first line starts with a quote?
     for (u32 j = 0; j < nn; j++) {
@@ -568,18 +584,38 @@ static AI void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line) {
         const u32 isqm = (u32)((bits_get(FL.cqa, ci) << 1) | lsq) & fmask;
         const u32 endm = ((u32)bits_get(FL.cqb, ci) & ((1u << (NF - 1)) - 1)) | ((nlw >> 31) << (NF - 1));
         u32 bad = isqm & ~endm;
-        u32 fs = (u32)(ls - wb);
-        for (int i = 0; i < NF; i++) {
-          const u32 fe = i < NF - 1 ? FL.com[ci + i] : le;
-          const u32 len = fe - fs;
-          const u32 isq = (isqm >> i) & 1;
-          bad |= isq & (len < 2);
-          fl[i].p = q + fs + isq;
-          fl[i].n = len - 2 * isq;
-          fs = fe + 1;
+        const u32 fs = (u32)(ls - wb);
+#if defined(__AVX2__) && !defined(SCALARFIELDS)
+        {
+          // ends: the NF-1 commas, then the newline; starts: line start, then each end + 1
+          const __m256i one = _mm256_set1_epi32(1);
+          __m256i E = _mm256_loadu_si256((const __m256i*)(FL.com + ci));
+          E = _mm256_blend_epi32(E, _mm256_set1_epi32((int)le), (0xFF << (NF - 1)) & 0xFF);
+          __m256i S = _mm256_permutevar8x32_epi32(_mm256_add_epi32(E, one), _mm256_setr_epi32(0, 0, 1, 2, 3, 4, 5, 6));
+          S = _mm256_blend_epi32(S, _mm256_set1_epi32((int)fs), 1);
+          const __m256i isq = _mm256_and_si256(_mm256_srlv_epi32(_mm256_set1_epi32((int)isqm), _mm256_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7)), one);
+          const __m256i len = _mm256_sub_epi32(E, S);
+          _mm256_store_si256((__m256i*)LF.off, _mm256_add_epi32(S, isq));
+          _mm256_store_si256((__m256i*)LF.len, _mm256_sub_epi32(len, _mm256_add_epi32(isq, isq)));
+          const __m256i b = _mm256_and_si256(isq, _mm256_cmpgt_epi32(_mm256_set1_epi32(2), len));  // quoted and < 2 long
+          bad |= (u32)!_mm256_testz_si256(b, b);
         }
+#else
+        {
+          u32 fsv = fs;
+          for (int i = 0; i < NF; i++) {
+            const u32 fe = i < NF - 1 ? FL.com[ci + i] : le;
+            const u32 len = fe - fsv;
+            const u32 isq = (isqm >> i) & 1;
+            bad |= isq & (len < 2);
+            LF.off[i] = fsv + isq;
+            LF.len[i] = len - 2 * isq;
+            fsv = fe + 1;
+          }
+        }
+#endif
         ci += NF - 1;
-        if (!bad && qn == 2 * (u32)__builtin_popcount(isqm)) on_line(fl);
+        if (!bad && qn == 2 * (u32)__builtin_popcount(isqm)) on_line(LF);
       } else {
         while (ci < nc && FL.com[ci] < le) ci++;
       }
@@ -1537,7 +1573,7 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
 #ifdef LINESIMD
   for_lines2<7>(f, s, e, [&](Fld* fl) __attribute__((always_inline)) {
 #else
-  for_lines<7>(f, s, e, *W.flat, [&](Fld* fl) __attribute__((always_inline)) {
+  for_lines<7>(f, s, e, *W.flat, [&](const LineF& fl) __attribute__((always_inline)) {
 #endif
     if (fl[0].n == 0) return;
     W.n_ev_lines++;
@@ -1648,7 +1684,7 @@ static void clicks_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
 #ifdef LINESIMD
   for_lines2<4, CLICKW>(f, s, e, [&](Fld* fl) __attribute__((always_inline)) {
 #else
-  for_lines<4>(f, s, e, *W.flat, [&](Fld* fl) __attribute__((always_inline)) {
+  for_lines<4>(f, s, e, *W.flat, [&](const LineF& fl) __attribute__((always_inline)) {
 #endif
     if (fl[0].n == 0 || fl[1].n == 0) return;
     i64 ts;

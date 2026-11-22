@@ -1,4 +1,3 @@
-flatfn -DFLATFN
+scalarf -DSCALARFIELDS
 pfw64 -DPFW=64
-usecrc -DUSECRC
-flatfn_pfw64 -DFLATFN -DPFW=64
+flatfn -DFLATFN
