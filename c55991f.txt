@@ -1,0 +1,359 @@
+commit c55991f227bb74155401046c4973eec8bf23d983
+CPU(s):                                  4
+Model name:                              AMD EPYC 9V45 96-Core Processor
+Thread(s) per core:                      2
+Core(s) per socket:                      2
+Socket(s):                               1
+Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc 
+L1d cache:                               96 KiB (2 instances)
+L2 cache:                                2 MiB (2 instances)
+L3 cache:                                32 MiB (1 instance)
+               total        used        free      shared  buff/cache   available
+Mem:              15           0          14           0           0          14
+7.0.0-1020-azure
+thp always [madvise] never defrag always defer defer+madvise [madvise] never
+[    0.09 ms] small tables
+[    2.83 ms] mapped
+[   24.17 ms] links parsed
+[  112.16 ms] links done
+[  112.29 ms] small tables joined
+[  873.07 ms] parsed events+clicks
+[  929.68 ms] dedup
+[ 1109.49 ms] persons
+  person cpu-ms: group 115.0 scatter 139.2 names 64.1 process 397.2
+  t3 user_daily rows=509536 build=12.5ms write=15.0ms
+  t1 user_daily rows=520752 build=12.6ms write=16.1ms
+  t2 user_daily rows=603668 build=13.1ms write=18.3ms
+  t0 user_daily rows=616405 build=13.4ms write=17.6ms
+[ 1145.48 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1152.73 ms] released
+RUN ncpu=4 wall 1.17 user 3.99 sys 0.34 maxrss 3461728KB faults 120153
+[    0.09 ms] small tables
+[    5.57 ms] mapped
+[   29.39 ms] links parsed
+[  114.17 ms] links done
+[  114.20 ms] small tables joined
+[  844.76 ms] parsed events+clicks
+[  907.55 ms] dedup
+[ 1087.17 ms] persons
+  person cpu-ms: group 114.6 scatter 130.1 names 63.0 process 408.9
+  t2 user_daily rows=526617 build=10.9ms write=22.0ms
+  t3 user_daily rows=565670 build=13.3ms write=20.6ms
+  t1 user_daily rows=577225 build=13.7ms write=23.8ms
+  t0 user_daily rows=580849 build=10.3ms write=27.3ms
+[ 1129.79 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1134.74 ms] released
+RUN ncpu=4 wall 1.15 user 4.05 sys 0.32 maxrss 3483080KB faults 119137
+[    0.10 ms] small tables
+[    4.58 ms] mapped
+[   31.36 ms] links parsed
+[  118.85 ms] links done
+[  118.89 ms] small tables joined
+[  864.68 ms] parsed events+clicks
+[  926.53 ms] dedup
+[ 1103.16 ms] persons
+  person cpu-ms: group 109.5 scatter 135.4 names 61.3 process 398.3
+  t2 user_daily rows=559841 build=10.5ms write=18.6ms
+  t0 user_daily rows=568314 build=8.8ms write=18.9ms
+  t1 user_daily rows=560277 build=15.5ms write=19.0ms
+  t3 user_daily rows=561929 build=15.5ms write=20.3ms
+[ 1140.71 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1147.85 ms] released
+RUN ncpu=4 wall 1.17 user 4.08 sys 0.37 maxrss 3463844KB faults 120189
+[    0.11 ms] small tables
+[    3.78 ms] mapped
+[   29.72 ms] links parsed
+[  117.97 ms] links done
+[  118.01 ms] small tables joined
+[  880.66 ms] parsed events+clicks
+[  943.05 ms] dedup
+[ 1128.14 ms] persons
+  person cpu-ms: group 116.4 scatter 140.9 names 66.2 process 414.0
+  t2 user_daily rows=518308 build=12.3ms write=15.5ms
+  t0 user_daily rows=599466 build=12.1ms write=16.9ms
+  t3 user_daily rows=521203 build=12.6ms write=21.7ms
+  t1 user_daily rows=611384 build=12.8ms write=23.0ms
+[ 1166.41 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1172.22 ms] released
+RUN ncpu=4 wall 1.19 user 4.19 sys 0.35 maxrss 3450920KB faults 118742
+[    0.08 ms] small tables
+[    2.65 ms] mapped
+[   28.38 ms] links parsed
+[  123.92 ms] links done
+[  123.96 ms] small tables joined
+[  847.75 ms] parsed events+clicks
+[  909.08 ms] dedup
+[ 1081.30 ms] persons
+  person cpu-ms: group 105.6 scatter 126.9 names 60.9 process 392.4
+  t0 user_daily rows=563752 build=9.2ms write=20.3ms
+  t1 user_daily rows=567673 build=12.6ms write=21.5ms
+  t3 user_daily rows=556368 build=15.5ms write=28.7ms
+  t2 user_daily rows=562568 build=15.9ms write=29.6ms
+[ 1129.69 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1135.35 ms] released
+RUN ncpu=4 wall 1.16 user 3.98 sys 0.40 maxrss 3468916KB faults 121167
+[    0.19 ms] small tables
+[    3.94 ms] mapped
+[   27.43 ms] links parsed
+[  115.09 ms] links done
+[  115.13 ms] small tables joined
+[  843.60 ms] parsed events+clicks
+[  910.12 ms] dedup
+[ 1119.91 ms] persons
+  person cpu-ms: group 237.8 scatter 359.8 names 146.5 process 883.5
+  t2 user_daily rows=108465 build=3.8ms write=5.6ms
+  t7 user_daily rows=114994 build=2.3ms write=7.6ms
+  t5 user_daily rows=108365 build=4.6ms write=9.6ms
+  t6 user_daily rows=127501 build=8.9ms write=6.4ms
+  t4 user_daily rows=282867 build=13.6ms write=8.1ms
+  t0 user_daily rows=249324 build=9.1ms write=11.3ms
+  t1 user_daily rows=634222 build=23.0ms write=14.9ms
+  t3 user_daily rows=624623 build=33.7ms write=17.9ms
+[ 1172.71 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1179.15 ms] released
+RUN ncpu=8 wall 1.21 user 4.16 sys 0.39 maxrss 3531444KB faults 124961
+[    0.25 ms] small tables
+[    4.88 ms] mapped
+[   23.26 ms] links parsed
+[  112.88 ms] links done
+[  112.92 ms] small tables joined
+[ 1015.08 ms] parsed events+clicks
+[ 1082.11 ms] dedup
+[ 1285.96 ms] persons
+  person cpu-ms: group 269.9 scatter 345.7 names 105.1 process 877.1
+  t6 user_daily rows=166743 build=11.8ms write=14.9ms
+  t5 user_daily rows=149381 build=20.3ms write=11.9ms
+  t7 user_daily rows=162717 build=19.0ms write=12.9ms
+  t4 user_daily rows=343962 build=24.0ms write=13.1ms
+  t0 user_daily rows=231927 build=10.6ms write=15.8ms
+  t2 user_daily rows=192782 build=25.8ms write=18.3ms
+  t3 user_daily rows=476388 build=21.3ms write=26.0ms
+  t1 user_daily rows=526461 build=19.9ms write=29.3ms
+[ 1338.50 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1346.03 ms] released
+RUN ncpu=8 wall 1.38 user 4.85 sys 0.40 maxrss 3524392KB faults 122714
+[    0.10 ms] small tables
+[    8.81 ms] mapped
+[   33.99 ms] links parsed
+[  136.06 ms] links done
+[  136.09 ms] small tables joined
+[  917.27 ms] parsed events+clicks
+[  989.07 ms] dedup
+[ 1193.06 ms] persons
+  person cpu-ms: group 265.5 scatter 338.7 names 108.2 process 898.7
+  t1 user_daily rows=162367 build=15.3ms write=10.4ms
+  t6 user_daily rows=178556 build=10.1ms write=15.5ms
+  t0 user_daily rows=337932 build=12.8ms write=10.0ms
+  t4 user_daily rows=153519 build=19.2ms write=8.9ms
+  t3 user_daily rows=264158 build=25.1ms write=9.2ms
+  t7 user_daily rows=273039 build=18.0ms write=13.6ms
+  t5 user_daily rows=282457 build=19.7ms write=16.5ms
+  t2 user_daily rows=598333 build=23.8ms write=17.5ms
+[ 1235.37 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1241.70 ms] released
+RUN ncpu=8 wall 1.27 user 4.39 sys 0.40 maxrss 3563072KB faults 124723
+[    0.09 ms] small tables
+[    5.29 ms] mapped
+[   26.88 ms] links parsed
+[  127.99 ms] links done
+[  128.07 ms] small tables joined
+[  890.52 ms] parsed events+clicks
+[  953.38 ms] dedup
+[ 1166.56 ms] persons
+  person cpu-ms: group 234.1 scatter 424.2 names 137.8 process 874.0
+  t2 user_daily rows=229914 build=2.6ms write=10.7ms
+  t7 user_daily rows=257723 build=5.5ms write=10.2ms
+  t4 user_daily rows=264957 build=5.7ms write=10.9ms
+  t6 user_daily rows=197081 build=9.7ms write=5.2ms
+  t5 user_daily rows=236947 build=12.6ms write=7.1ms
+  t1 user_daily rows=259624 build=21.9ms write=5.8ms
+  t0 user_daily rows=276541 build=15.2ms write=7.8ms
+  t3 user_daily rows=527574 build=14.1ms write=17.4ms
+[ 1201.25 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1207.75 ms] released
+RUN ncpu=8 wall 1.23 user 4.30 sys 0.38 maxrss 3529696KB faults 122161
+[    0.09 ms] small tables
+[    4.70 ms] mapped
+[   26.21 ms] links parsed
+[  124.45 ms] links done
+[  124.49 ms] small tables joined
+[  864.47 ms] parsed events+clicks
+[  928.28 ms] dedup
+[ 1152.60 ms] persons
+  person cpu-ms: group 283.8 scatter 387.1 names 134.4 process 958.5
+  t2 user_daily rows=131048 build=3.9ms write=4.0ms
+  t7 user_daily rows=104822 build=1.4ms write=7.7ms
+  t0 user_daily rows=215674 build=3.4ms write=8.8ms
+  t5 user_daily rows=149681 build=8.5ms write=8.8ms
+  t4 user_daily rows=188552 build=6.8ms write=10.3ms
+  t6 user_daily rows=136710 build=9.4ms write=9.1ms
+  t1 user_daily rows=626923 build=29.0ms write=20.4ms
+  t3 user_daily rows=696951 build=35.1ms write=23.7ms
+[ 1212.79 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1219.74 ms] released
+RUN ncpu=8 wall 1.24 user 4.27 sys 0.42 maxrss 3531308KB faults 122942
+
+ Performance counter stats for 'env NCPU=4 /tmp/pipeline /tmp/p20 /tmp/out':
+
+           4364.15 msec task-clock                                                            
+            122394      page-faults                                                           
+               699      context-switches                                                      
+   <not supported>      cycles                                                                
+   <not supported>      instructions                                                          
+   <not supported>      branch-misses                                                         
+   <not supported>      cache-misses                                                          
+   <not supported>      dTLB-load-misses                                                      
+
+       1.161488199 seconds time elapsed
+
+       4.035714000 seconds user
+       0.353588000 seconds sys
+
+
+== perf by symbol
+    15.45%  [.] events_chunk(TCtx&, MFile const&, unsigned long, unsigned long)
+    14.75%  [.] flushE(TCtx&, PendE*, int)
+    12.91%  [.] person_partition(TCtx&, unsigned int)
+     8.29%  [.] dt19(char const*, long&)
+     8.08%  [.] events_chunk(TCtx&, MFile const&, unsigned long, unsigned long)::{lambda(Fld*)#1}::operator()(Fld*) const
+     7.37%  [.] hstr(char const*, unsigned int)
+     6.47%  [.] clicks_chunk(TCtx&, MFile const&, unsigned long, unsigned long)
+     5.15%  [.] dedup_partition(TCtx&, unsigned int)
+     2.15%  [.] __memcmp_evex_movbe
+     2.10%  [.] SMap::find(char const*, unsigned int) const
+     1.93%  [.] __memmove_avx512_unaligned_erms
+     1.49%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&)::{lambda(int)#4}>(links_phase(std::vector<MFile, std::allocator<MFile> > const&)::{lambda(int)#4}&&)::{lambda()#1}> > >::_M_run()
+     1.28%  [k] kernel_init_pages
+     1.21%  [.] parse_f12(char const*, unsigned int, long&)
+     1.17%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&)::{lambda(int)#2}>(links_phase(std::vector<MFile, std::allocator<MFile> > const&)::{lambda(int)#2}&&)::{lambda()#1}> > >::_M_run()
+     0.90%  [.] links_phase(std::vector<MFile, std::allocator<MFile> > const&)
+     0.90%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&)::{lambda(int)#5}>(links_phase(std::vector<MFile, std::allocator<MFile> > const&)::{lambda(int)#5}&&)::{lambda()#1}> > >::_M_run()
+     0.71%  [k] do_user_addr_fault
+     0.61%  [k] _raw_spin_unlock_irqrestore
+     0.59%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&)::{lambda(int)#3}>(links_phase(std::vector<MFile, std::allocator<MFile> > const&)::{lambda(int)#3}&&)::{lambda()#1}> > >::_M_run()
+     0.37%  [.] links_phase(std::vector<MFile, std::allocator<MFile> > const&)::{lambda(int)#1}::operator()(int) const
+     0.34%  [.] main::{lambda(int)#4}::operator()(int) const
+     0.31%  [.] __memset_avx512_unaligned_erms
+     0.28%  [.] int& std::vector<int, std::allocator<int> >::emplace_back<int>(int&&) [clone .isra.0]
+     0.26%  [k] __handle_mm_fault
+     0.23%  [k] do_anonymous_page
+     0.20%  [k] __rmqueue_pcplist
+     0.16%  [k] copy_folio_from_iter_atomic
+     0.12%  [k] zap_present_ptes.constprop.0
+     0.12%  [k] handle_mm_fault
+     0.11%  [k] filemap_map_folio_range
+     0.10%  [k] alloc_anon_folio
+     0.10%  [k] get_page_from_freelist
+     0.10%  [k] set_pte_range
+     0.10%  [k] __alloc_frozen_pages_noprof
+     0.10%  [k] folio_remove_rmap_ptes
+     0.10%  [k] lock_vma_under_rcu
+     0.10%  [k] free_unref_folios
+     0.08%  [k] blk_cgroup_congested
+     0.08%  [k] xas_find
+     0.07%  [k] filemap_map_pages
+     0.07%  [k] pte_offset_map_lock
+     0.07%  [k] lruvec_stat_mod_folio
+     0.07%  [k] mas_walk
+     0.07%  [k] next_uptodate_folio
+== perf by srcline (top)
+     4.47%  ??:0
+     4.33%  pipeline.cpp:470
+     3.59%  pipeline.cpp:1181
+     3.16%  pipeline.cpp:785
+     2.23%  pipeline.cpp:413
+     2.18%  avxintrin.h:961
+     1.99%  avx2intrin.h:233
+     1.80%  pipeline.cpp:377
+     1.55%  pipeline.cpp:1031
+     1.53%  stl_vector.h:1264
+     1.50%  pipeline.cpp:651
+     1.42%  pipeline.cpp:1052
+     1.42%  pipeline.cpp:544
+     1.39%  pipeline.cpp:650
+     1.24%  kernel_init_pages+58
+     1.22%  pipeline.cpp:540
+     1.16%  pipeline.cpp:1000
+     1.14%  pipeline.cpp:168
+     1.05%  pipeline.cpp:432
+     1.02%  pipeline.cpp:1055
+     1.01%  pipeline.cpp:1412
+     1.01%  pipeline.cpp:166
+     0.95%  pipeline.cpp:472
+     0.89%  pipeline.cpp:1012
+     0.87%  pipeline.cpp:207
+     0.87%  pipeline.cpp:531
+     0.85%  pipeline.cpp:551
+     0.85%  pipeline.cpp:186
+     0.82%  pipeline.cpp:471
+     0.77%  pipeline.cpp:1564
+     0.77%  pipeline.cpp:594
+     0.71%  pipeline.cpp:173
+     0.68%  pipeline.cpp:1329
+     0.67%  pipeline.cpp:792
+     0.66%  pipeline.cpp:164
+     0.66%  pipeline.cpp:929
+     0.65%  pipeline.cpp:932
+     0.64%  pipeline.cpp:527
+     0.63%  pipeline.cpp:696
+     0.61%  pipeline.cpp:161
+     0.61%  _raw_spin_unlock_irqrestore+33
+     0.59%  pipeline.cpp:1193
+     0.58%  do_user_addr_fault+200
+     0.56%  pipeline.cpp:530
+     0.55%  pipeline.cpp:469
+     0.54%  pipeline.cpp:1041
+     0.54%  pipeline.cpp:1036
+     0.54%  pipeline.cpp:171
+     0.53%  pipeline.cpp:1514
+     0.52%  pipeline.cpp:793
+     0.47%  pipeline.cpp:399
+     0.47%  string_fortified.h:29
+     0.47%  pipeline.cpp:523
+     0.46%  pipeline.cpp:430
+     0.43%  pipeline.cpp:157
+     0.42%  pipeline.cpp:188
+     0.42%  pipeline.cpp:1117
+     0.42%  pipeline.cpp:341
+     0.41%  pipeline.cpp:534
+     0.40%  pipeline.cpp:1128
+     0.40%  pipeline.cpp:543
+     0.39%  pipeline.cpp:773
+     0.38%  pipeline.cpp:1365
+     0.38%  pipeline.cpp:911
+     0.37%  pipeline.cpp:1095
+     0.37%  pipeline.cpp:922
+     0.37%  pipeline.cpp:1062
+     0.37%  pipeline.cpp:597
+     0.35%  pipeline.cpp:461
+     0.34%  pipeline.cpp:155
+     0.34%  pipeline.cpp:466
+     0.33%  pipeline.cpp:1100
+     0.33%  pipeline.cpp:1134
+     0.33%  pipeline.cpp:1054
+     0.32%  pipeline.cpp:1080
+     0.32%  pipeline.cpp:1190
+     0.32%  pipeline.cpp:443
+     0.32%  pipeline.cpp:585
+     0.31%  pipeline.cpp:1570
+     0.30%  pipeline.cpp:1079
+     0.30%  pipeline.cpp:593
+     0.30%  atomic_base.h:536
+     0.30%  pipeline.cpp:586
+     0.29%  pipeline.cpp:1070
+     0.28%  pipeline.cpp:1060
+     0.28%  pipeline.cpp:1197
+     0.28%  pipeline.cpp:545
+     0.27%  pipeline.cpp:1057
+     0.27%  pipeline.cpp:1493
+     0.27%  pipeline.cpp:791
