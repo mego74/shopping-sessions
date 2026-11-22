@@ -577,7 +577,7 @@ static void flatten_window(const char* base, u64 wb, u64 we, u64 ls, Flat& FL, u
     nm = nnm;
     qm = nqm;
   }
-  for (int i = 0; i < 8; i++) FL.com[nc + i] = 0xFFFFFFFFu;  // sentinels: past the last comma
+  for (int i = 0; i < 8; i++) FL.com[nc + i] = 0x7FFFFFFFu;  // sentinels past the last comma (signed max)
   nc_out = nc;
   nn_out = nn;
 }
@@ -623,7 +623,14 @@ static AI void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line) {
       const u32 qn = FL.nlq[j] - prevq;
       prevq = FL.nlq[j];
       // exactly NF-1 commas before this newline (ci <= nc, and sentinels follow the last comma)
+#if defined(__AVX2__) && !defined(SCALARFIELDS) && !defined(OLDCNT)
+      const __m256i Eraw = _mm256_loadu_si256((const __m256i*)(FL.com + ci));
+      const __m256i lev = _mm256_set1_epi32((int)le);
+      const u32 ltm = (u32)_mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpgt_epi32(lev, Eraw)));
+      const bool cnt_ok = (ltm & ((1u << NF) - 1)) == ((1u << (NF - 1)) - 1);  // NF-1 commas before le, the next after
+#else
       const bool cnt_ok = (FL.com[ci + NF - 2] < le) & (FL.com[ci + NF - 1] > le);
+#endif
       if (LIKELY(cnt_ok)) {
         const u32 fmask = (1u << NF) - 1;
 #ifdef OLDQBITS
@@ -640,8 +647,12 @@ static AI void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line) {
         {
           // ends: the NF-1 commas, then the newline; starts: line start, then each end + 1
           const __m256i one = _mm256_set1_epi32(1);
+#ifndef OLDCNT
+          const __m256i E = _mm256_blend_epi32(Eraw, lev, (0xFF << (NF - 1)) & 0xFF);
+#else
           __m256i E = _mm256_loadu_si256((const __m256i*)(FL.com + ci));
           E = _mm256_blend_epi32(E, _mm256_set1_epi32((int)le), (0xFF << (NF - 1)) & 0xFF);
+#endif
           __m256i S = _mm256_permutevar8x32_epi32(_mm256_add_epi32(E, one), _mm256_setr_epi32(0, 0, 1, 2, 3, 4, 5, 6));
           S = _mm256_blend_epi32(S, _mm256_set1_epi32((int)fs), 1);
           const __m256i isq = _mm256_and_si256(_mm256_srlv_epi32(_mm256_set1_epi32((int)isqm), _mm256_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7)), one);
