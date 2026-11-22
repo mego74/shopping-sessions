@@ -90,7 +90,6 @@ jobs:
           for i in 1 2 3 4; do sudo rm -rf /tmp/dout/*; cid=$(docker run -d $FLAGS ss:cand); docker wait $cid >/dev/null
             echo "OVERHEAD pipeline container span $(span $cid)s, internal $(docker logs $cid 2>&1 | grep -E 'released|written' | tail -1)" | tee -a $R; docker rm $cid >/dev/null; done
       - name: Perf (candidate)
-        if: matrix.job == 1
         continue-on-error: true
         run: |
           R=results/$(git rev-parse --short HEAD)-${{ matrix.job }}.txt
