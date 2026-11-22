@@ -2406,10 +2406,19 @@ static void person_partition(TCtx& W, u32 p) {
     u32* la = clp;
     CK* bb = W.cktmp2.p;
     u32* lb = W.clp2.p;
-    static const int SH[3] = {32, 43, 54};
-    static const u32 MK[3] = {2047, 2047, 1023};
+#ifdef CK2P
+    // windows under 2^31 ms: two passes on ts >> 10, then an insertion pass by ts
+    const bool two = (WE - CWS) < (1LL << 31);
+#else
+    const bool two = false;
+#endif
+    static const int SH3[3] = {32, 43, 54}, SH2[2] = {42, 53};
+    static const u32 MK3[3] = {2047, 2047, 1023}, MK2[2] = {2047, 1023};
+    const int* SH = two ? SH2 : SH3;
+    const u32* MK = two ? MK2 : MK3;
+    const int NPASS = two ? 2 : 3;
     u32 cnt[2048];
-    for (int pass = 0; pass < 3; pass++) {
+    for (int pass = 0; pass < NPASS; pass++) {
       const int sh = SH[pass];
       const u32 mk = MK[pass];
       memset(cnt, 0, sizeof(u32) * (mk + 1));
@@ -2428,6 +2437,22 @@ static void person_partition(TCtx& W, u32 p) {
       std::swap(a, bb);
       std::swap(la, lb);
     }
+#ifdef CK2P
+    for (size_t i = 1; two && i < kc; i++) {
+      const u32 t = (u32)(a[i].key >> 32);
+      if (LIKELY((u32)(a[i - 1].key >> 32) <= t)) continue;
+      const CK v = a[i];
+      const u32 lv = la[i];
+      size_t j = i;
+      while (j > 0 && (u32)(a[j - 1].key >> 32) > t) {
+        a[j] = a[j - 1];
+        la[j] = la[j - 1];
+        j--;
+      }
+      a[j] = v;
+      la[j] = lv;
+    }
+#endif
     for (size_t i = 0; i < kc; i++) {
       LPS& P = L[la[i]];
       ck[P.coff + P.ccnt++] = a[i];
