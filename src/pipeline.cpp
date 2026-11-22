@@ -635,6 +635,7 @@ struct TCtx {
   Buf<u64> tmp64;
   Buf<u64> ev;
   Buf<u64> radtmp;
+  Buf<u32> lp2;
   Buf<u32> clp;
   Buf<CK> cktmp;
   Buf<CK> ck;
@@ -647,6 +648,7 @@ struct TCtx {
   std::vector<CampState> cst;
   std::vector<u32> ctouch;
   u32 stamp = 0;
+  double tm[8] = {0, 0, 0, 0, 0, 0, 0, 0};
   // outputs
   std::vector<char> names;
   std::vector<u64> o_name;  // (offset into names)<<16 | len
@@ -1074,7 +1076,6 @@ static inline u64 resolve_name(u64 pk) {
 
 static void process_person(TCtx& W, Pers& P, u64* ev, CK* ck) {
   const u32 n = P.cnt, m = P.ccnt;
-  sort_u64(ev, n, W);
   if (m > 1) sort_ck(ck, m);
   W.s_start.ensure(n);
   W.s_day.ensure(n);
@@ -1083,7 +1084,7 @@ static void process_person(TCtx& W, Pers& P, u64* ev, CK* ck) {
   u16* sd = W.s_day.p;
   u64* sr = W.s_rev.p;
   const u64 name = P.np;  // arena ref
-  u32 ns = 0, prev = 0;
+  u32 ns = 0, cur_max = 0;
   i32 cur_day = -1;
   u32 d_sess = 0, d_ev = 0;
   u64 d_rev = 0;
@@ -1108,11 +1109,19 @@ static void process_person(TCtx& W, Pers& P, u64* ev, CK* ck) {
     W.o_rev.push_back((i64)d_rev);
     W.o_cat.push_back(topc);
   };
-  for (u32 k = 0; k < n; k++) {
-    u64 x = ev[k];
-    u32 ts = (u32)(x >> 32);
-    if (k == 0 || ts - prev > GAP) {
-      i32 day = (i32)((WSOFF + ts) / (u64)DAYMS);
+  // events are grouped by 2^20-ms bucket (< GAP), unordered inside a bucket: a session boundary can
+  // only fall between buckets, decided by min(next bucket) - max(so far) > GAP.
+  for (u32 k = 0; k < n;) {
+    const u32 b = (u32)(ev[k] >> 52);
+    u32 ke = k, bmin = 0xFFFFFFFFu, bmax = 0;
+    do {
+      u32 ts = (u32)(ev[ke] >> 32);
+      bmin = ts < bmin ? ts : bmin;
+      bmax = ts > bmax ? ts : bmax;
+      ke++;
+    } while (ke < n && (u32)(ev[ke] >> 52) == b);
+    if (ns == 0 || bmin - cur_max > GAP) {
+      i32 day = (i32)((WSOFF + bmin) / (u64)DAYMS);
       if (day != cur_day) {
         if (cur_day >= 0) emit();
         cur_day = day;
@@ -1120,20 +1129,23 @@ static void process_person(TCtx& W, Pers& P, u64* ev, CK* ck) {
         d_rev = 0;
       }
       d_sess++;
-      ss[ns] = ts;
+      ss[ns] = bmin;
       sd[ns] = (u16)day;
       sr[ns] = 0;
       ns++;
     }
-    prev = ts;
-    d_ev++;
-    u32 X = (u32)(x >> 24) & 0xFF;
-    if (X != 0xFF) {
-      u32 pr = (u32)(x & 0xFFFFFF);
-      sr[ns - 1] += pr;
-      d_rev += pr;
-      if (W.catrev[X] == 0) W.cattouch.push_back(X);
-      W.catrev[X] += pr;
+    cur_max = bmax > cur_max ? bmax : cur_max;
+    d_ev += ke - k;
+    for (; k < ke; k++) {
+      u64 x = ev[k];
+      u32 X = (u32)(x >> 24) & 0xFF;
+      if (X != 0xFF) {
+        u32 pr = (u32)(x & 0xFFFFFF);
+        sr[ns - 1] += pr;
+        d_rev += pr;
+        if (W.catrev[X] == 0) W.cattouch.push_back(X);
+        W.catrev[X] += pr;
+      }
     }
   }
   if (cur_day >= 0) emit();
@@ -1217,6 +1229,7 @@ static void process_person(TCtx& W, Pers& P, u64* ev, CK* ck) {
 }
 
 static void person_partition(TCtx& W, u32 p) {
+  double tg0 = nowd();
   size_t nrec = 0, ncl = 0;
   for (int t = 0; t < NT; t++) {
     nrec += TC[t].ps[p].count();
@@ -1297,6 +1310,7 @@ static void person_partition(TCtx& W, u32 p) {
     }
   }
   size_t live = k;
+  double tg1 = nowd();
   u32 off = 0;
   for (Pers& P : PS) {
     P.off = off;
@@ -1305,9 +1319,30 @@ static void person_partition(TCtx& W, u32 p) {
   }
   W.ev.ensure(live);
   u64* ev = W.ev.p;
-  for (size_t i = 0; i < live; i++) {
-    Pers& P = PS[lpo[i]];
-    ev[P.off + P.cnt++] = tmp[i];
+  {
+    // stable LSD: first by 2^20-ms bucket (12 bits of ts), then by person
+    W.radtmp.ensure(live);
+    W.lp2.ensure(live);
+    u64* t2 = W.radtmp.p;
+    u32* l2 = W.lp2.p;
+    u32 cnt[4096];
+    memset(cnt, 0, sizeof cnt);
+    for (size_t i = 0; i < live; i++) cnt[tmp[i] >> 52]++;
+    u32 sum = 0;
+    for (int i = 0; i < 4096; i++) {
+      u32 c = cnt[i];
+      cnt[i] = sum;
+      sum += c;
+    }
+    for (size_t i = 0; i < live; i++) {
+      u32 d = cnt[tmp[i] >> 52]++;
+      t2[d] = tmp[i];
+      l2[d] = lpo[i];
+    }
+    for (size_t i = 0; i < live; i++) {
+      Pers& P = PS[l2[i]];
+      ev[P.off + P.cnt++] = t2[i];
+    }
   }
   // clicks
   W.clp.ensure(ncl + 1);
@@ -1351,6 +1386,7 @@ static void person_partition(TCtx& W, u32 p) {
     Pers& P = PS[clp[i]];
     ck[P.coff + P.ccnt++] = ckt[i];
   }
+  double tg2 = nowd();
   // names: copy each person's name once into the thread arena (prefetched)
   {
     const size_t NP = PS.size();
@@ -1372,7 +1408,10 @@ static void person_partition(TCtx& W, u32 p) {
       P.np = (off << 16) | sn;
     }
   }
+  double tg3 = nowd();
   for (Pers& P : PS) process_person(W, P, ev + P.off, ck + P.coff);
+  double tg4 = nowd();
+  W.tm[0] += tg1 - tg0; W.tm[1] += tg2 - tg1; W.tm[2] += tg3 - tg2; W.tm[3] += tg4 - tg3;
 }
 
 // ---------------------------------------------------------------- parquet writer
@@ -1835,6 +1874,11 @@ int main(int argc, char** argv) {
     });
   }
   logt("persons");
+  if (VERBOSE) {
+    double a[4] = {0, 0, 0, 0};
+    for (int t = 0; t < NT; t++) for (int i = 0; i < 4; i++) a[i] += TC[t].tm[i];
+    fprintf(stderr, "  person cpu-ms: group %.1f scatter %.1f names %.1f process %.1f\n", a[0]*1e3, a[1]*1e3, a[2]*1e3, a[3]*1e3);
+  }
 
   // outputs
   std::string ud = OUTD + "/user_daily", cdd = OUTD + "/campaign_daily";
