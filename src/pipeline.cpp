@@ -384,6 +384,12 @@ static AI u32 ctz_any(u64 x) {  // any value is fine for x == 0
 }
 
 static const u32 FLAT_W = 16384;  // window bytes
+#ifndef CUNROLL
+#define CUNROLL 8
+#endif
+#ifndef NUNROLL
+#define NUNROLL 2
+#endif
 struct Flat {
   u32 com[FLAT_W + 64];
   u32 nl[FLAT_W + 64];   // position | quote-after << 30 | quote-before << 31
@@ -449,12 +455,12 @@ static inline void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line
         bits_append(FL.cqb, nc, pext64(qb, cm));
         u32* o = FL.com + nc;
         u64 t = cm;
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < CUNROLL; i++) {
           o[i] = off + ctz_any(t);
           t &= t - 1;
         }
-        if (UNLIKELY(cnt > 8)) {
-          for (u32 i = 8; i < cnt; i++) {
+        if (UNLIKELY(cnt > CUNROLL)) {
+          for (u32 i = CUNROLL; i < cnt; i++) {
             o[i] = off + ctz_any(t);
             t &= t - 1;
           }
@@ -466,14 +472,14 @@ static inline void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line
         u32* o = FL.nl + nn;
         u32* oq = FL.nlq + nn;
         u64 t = nm;
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < NUNROLL; i++) {
           const u32 bit = ctz_any(t) & 63;
           o[i] = (off + bit) | (u32)(((qa >> bit) & 1) << 30) | (u32)(((qb >> bit) & 1) << 31);
           oq[i] = cq + (u32)__builtin_popcountll(qm & ((1ULL << bit) - 1));
           t &= t - 1;
         }
-        if (UNLIKELY(cnt > 2)) {
-          for (u32 i = 2; i < cnt; i++) {
+        if (UNLIKELY(cnt > NUNROLL)) {
+          for (u32 i = NUNROLL; i < cnt; i++) {
             u32 bit = (u32)__builtin_ctzll(t);
             o[i] = (off + bit) | (u32)(((qa >> bit) & 1) << 30) | (u32)(((qb >> bit) & 1) << 31);
             oq[i] = cq + (u32)__builtin_popcountll(qm & ((1ULL << bit) - 1));
@@ -599,6 +605,20 @@ static AI bool dt19(const char* s, i64& secs) {
   }
   secs = days * 86400 + (i64)(hh * 3600 + mi * 60 + ss);
   return true;
+}
+
+// ingest_ts is always valid F1 (rules.md): extract without validation.
+static AI i64 ingest_secs(const char* s) {
+  const u64 Z = 0x3030303030303030ULL;
+  const u64 ta = (load64(s) ^ Z) & 0x00FFFF00FFFFFFFFULL, tb = (load64(s + 8) ^ Z) & 0xFFFF00FFFF00FFFFULL,
+            tc = (load64(s + 16) ^ Z) & 0x0000000000FFFF00ULL;
+  const u64 pa = ta * 10 + (ta >> 8), pb = tb * 10 + (tb >> 8), pc = tc * 10 + (tc >> 8);
+  const unsigned y = (unsigned)(pa & 0xFF) * 100 + (unsigned)((pa >> 16) & 0xFF);
+  const unsigned mo = (unsigned)((pa >> 40) & 0xFF);
+  const unsigned yi = y - (unsigned)YBASE;
+  i64 days = (yi < (unsigned)YSPAN && mo - 1u < 12u) ? MSTART[yi * 13 + mo] : days_from_civil((i64)y, mo ? mo : 1, 1);
+  days += (i64)(pb & 0xFF) - 1;
+  return days * 86400 + (i64)(((pb >> 24) & 0xFF) * 3600 + ((pb >> 48) & 0xFF) * 60 + ((pc >> 8) & 0xFF));
 }
 
 // F1 (n==20) or F2 (n==25). Returns ms.
@@ -1279,7 +1299,14 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
     if (ekey == 0) ekey = 1;
     i64 ingsec;
     u32 ing = INVALID;
+#ifdef SLOW_INGEST
     if (fl[3].n == 20 && fl[3].p[19] == 'Z' && dt19(fl[3].p, ingsec)) ing = (u32)ingsec;
+#else
+    if (fl[3].n == 20) {
+      ingsec = ingest_secs(fl[3].p);
+      ing = (u32)ingsec;
+    }
+#endif
     // validate
     bool valid = fl[1].n > 0 && fl[5].n > 0;
     i64 ts = 0;
