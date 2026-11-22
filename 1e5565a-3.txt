@@ -1,0 +1,124 @@
+commit 1e5565a6d4ded40ae91313162329740182e4dbab
+CPU(s):                                  4
+Model name:                              AMD EPYC 9V45 96-Core Processor
+L2 cache:                                2 MiB (2 instances)
+L3 cache:                                32 MiB (1 instance)
+7.0.0-1020-azure
+thp always [madvise] never
+baseline dc8280f
+variant nols: -DNOLINESIMD
+variant global: -DGLOBALDEDUP
+variant cw2: -DCLICKW=2
+== correctness
+36/36 fixtures passed
+MATCH
+AB base wall 1.04 user 3.59 sys 0.30
+AB cand wall 0.98 user 3.44 sys 0.32
+AB nols wall 0.98 user 3.42 sys 0.29
+AB global wall 1.11 user 3.92 sys 0.35
+AB cw2 wall 0.99 user 3.44 sys 0.34
+AB base wall 1.02 user 3.56 sys 0.32
+AB cand wall 1.00 user 3.49 sys 0.32
+AB nols wall 0.97 user 3.40 sys 0.32
+AB global wall 1.11 user 3.88 sys 0.35
+AB cw2 wall 0.99 user 3.47 sys 0.33
+AB base wall 1.02 user 3.54 sys 0.33
+AB cand wall 1.00 user 3.50 sys 0.31
+AB nols wall 1.00 user 3.42 sys 0.30
+AB global wall 1.11 user 3.90 sys 0.36
+AB cw2 wall 0.99 user 3.47 sys 0.33
+AB base wall 1.10 user 3.80 sys 0.32
+AB cand wall 1.00 user 3.47 sys 0.32
+AB nols wall 0.97 user 3.39 sys 0.32
+AB global wall 1.11 user 3.92 sys 0.34
+AB cw2 wall 1.00 user 3.53 sys 0.32
+AB base wall 1.02 user 3.58 sys 0.29
+AB cand wall 1.02 user 3.47 sys 0.32
+AB nols wall 0.98 user 3.43 sys 0.32
+AB global wall 1.17 user 4.16 sys 0.35
+AB cw2 wall 0.99 user 3.45 sys 0.33
+AB base wall 1.03 user 3.61 sys 0.30
+AB cand wall 0.99 user 3.48 sys 0.32
+AB nols wall 0.98 user 3.41 sys 0.33
+AB global wall 1.11 user 3.90 sys 0.35
+AB cw2 wall 1.01 user 3.48 sys 0.34
+AB base wall 1.04 user 3.58 sys 0.33
+-- last base phases
+[    0.10 ms] small tables
+[    2.49 ms] mapped
+[   22.73 ms] links parsed
+[  117.39 ms] links done
+[  117.44 ms] small tables joined
+[  795.70 ms] parsed events+clicks
+[  836.49 ms] dedup
+[  982.43 ms] persons
+  person cpu-ms: group 65.3 scatter 121.6 names 0.0 process 393.0
+[ 1022.84 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1027.67 ms] released
+AB base wall 1.04 user 3.58 sys 0.33
+AB cand wall 1.04 user 3.55 sys 0.33
+-- last cand phases
+[    0.10 ms] small tables
+[    2.58 ms] mapped
+[   21.54 ms] links parsed
+[   92.90 ms] links done
+[   92.95 ms] small tables joined
+[  760.71 ms] parsed events+clicks
+[  831.76 ms] dedup
+[  980.27 ms] persons
+  person cpu-ms: group 63.9 scatter 127.7 names 0.0 process 400.0
+[ 1020.61 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1025.43 ms] released
+AB cand wall 1.04 user 3.55 sys 0.33
+AB nols wall 0.99 user 3.50 sys 0.32
+-- last nols phases
+[    0.10 ms] small tables
+[    2.56 ms] mapped
+[   18.70 ms] links parsed
+[   91.23 ms] links done
+[   91.29 ms] small tables joined
+[  746.19 ms] parsed events+clicks
+[  787.97 ms] dedup
+[  931.54 ms] persons
+  person cpu-ms: group 62.2 scatter 120.4 names 0.0 process 387.9
+[  972.39 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[  977.16 ms] released
+AB nols wall 0.99 user 3.50 sys 0.32
+AB global wall 1.13 user 4.01 sys 0.36
+-- last global phases
+[    0.11 ms] small tables
+[    2.50 ms] mapped
+[   17.23 ms] links parsed
+[   93.05 ms] links done
+[   93.12 ms] small tables joined
+[  919.74 ms] parsed events+clicks
+[  923.29 ms] dedup
+[ 1068.92 ms] persons
+  person cpu-ms: group 61.4 scatter 122.3 names 0.0 process 394.6
+[ 1109.45 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[ 1114.43 ms] released
+AB global wall 1.13 user 4.01 sys 0.36
+AB cw2 wall 1.00 user 3.52 sys 0.31
+-- last cw2 phases
+[    0.09 ms] small tables
+[    2.64 ms] mapped
+[   22.01 ms] links parsed
+[   91.90 ms] links done
+[   91.94 ms] small tables joined
+[  758.23 ms] parsed events+clicks
+[  798.45 ms] dedup
+[  941.20 ms] persons
+  person cpu-ms: group 60.7 scatter 118.3 names 0.0 process 388.8
+[  981.74 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[  986.56 ms] released
+AB cw2 wall 1.00 user 3.52 sys 0.31
+SUMMARY base      : median wall 1.035s  min 1.020s  median user 3.58s  ratio 1.000
+SUMMARY cand      : median wall 1.000s  min 0.980s  median user 3.49s  ratio 0.966
+SUMMARY nols      : median wall 0.980s  min 0.970s  median user 3.42s  ratio 0.947
+SUMMARY global    : median wall 1.110s  min 1.110s  median user 3.92s  ratio 1.072
+SUMMARY cw2       : median wall 0.995s  min 0.990s  median user 3.48s  ratio 0.961
