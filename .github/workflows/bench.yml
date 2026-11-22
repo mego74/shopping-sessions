@@ -45,7 +45,7 @@ jobs:
           cat /tmp/p20/events/*.csv /tmp/p20/clicks/*.csv /tmp/p20/links/*.csv > /dev/null
           BINS=$(cat /tmp/bins2)
           for i in 1 2 3 4 5 6 7; do for b in $BINS; do rm -rf /tmp/out
-            /usr/bin/time -f "AB $b wall %e user %U sys %S" env NCPU=4 PIPE_VERBOSE=1 /tmp/$b /tmp/p20 /tmp/out 2>/tmp/err_$b.txt >/dev/null
+            /usr/bin/time -f "AB $b wall %e user %U sys %S" env NCPU=4 PIPE_VERBOSE=1 $(cat .github/bench-env 2>/dev/null) /tmp/$b /tmp/p20 /tmp/out 2>/tmp/err_$b.txt >/dev/null
             tail -1 /tmp/err_$b.txt | tee -a $R
             [ $i = 7 ] && { echo "-- last $b phases"; cat /tmp/err_$b.txt | grep -v "user_daily rows=" ; } >> $R
           done; done

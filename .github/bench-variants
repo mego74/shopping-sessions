@@ -1,3 +1,3 @@
-q4 -DQDIV=48000.0
-p2 -DPDIV=60000.0
-phalf -DPDIV=15000.0
+stage1 -DSTAGE=1
+stage2 -DSTAGE=2
+stage3 -DSTAGE=3
