@@ -1,0 +1,5 @@
+build/
+*.parquet
+out*/
+data/
+.git
