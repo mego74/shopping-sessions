@@ -1,1 +1,3 @@
-
+clx -march=cascadelake -mtune=cascadelake
+o2 -O2
+norel -DNORELEASE

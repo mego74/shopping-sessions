@@ -2742,6 +2742,9 @@ int main(int argc, char** argv) {
     for (auto* fs : {&evf, &ckf, &lkf})
       for (auto& f : *fs) add(f.p, f.n);
     for (const BigReg& r : BIGREGS) add(r.p, r.n);
+#ifdef NORELEASE
+    total = 0;
+#endif
     if (total > ((size_t)256 << 20)) {
       std::atomic<size_t> nx{0};
       par_run([&](int) {
