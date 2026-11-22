@@ -1854,7 +1854,7 @@ static void dedup_partition(TCtx& W, u32 q) {
   while (cap < n * 2) cap <<= 1;
   const u64 mask = cap - 1;
   int lg = __builtin_ctzll(cap);
-#ifndef OLDDEDUP
+#ifdef SPLITDEDUP
   // keys only are cleared; a slot's (ingest, record) is written when its key is
   W.dkey.ensure(cap);
   W.dval.ensure(cap);
@@ -1880,7 +1880,7 @@ static void dedup_partition(TCtx& W, u32 q) {
       for (u32 k = 0; k < cnt; k++) {
         const ERec& e = r[k];
         u64 i = (e.key >> (64 - lg)) & mask;
-#ifndef OLDDEDUP
+#ifdef SPLITDEDUP
         for (;;) {
           const u64 sk = key[i];
           if (sk == 0) {
