@@ -2229,6 +2229,29 @@ static void person_partition(TCtx& W, u32 p) {
       bcnt[i] = sum;
       sum += c;
     }
+#ifdef PSORT
+    (void)t2;
+    (void)l2;
+    // straight to each person, then sort each person's (mostly short) list by time
+    for (size_t i = 0; i < live; i++) ev[L[tlp[i]].fill++] = tts[i];
+    for (u32 lp : act) {
+      L[lp].fill -= L[lp].n;  // back to the start offset
+      u32* a = ev + L[lp].fill;
+      const u32 m = L[lp].n;
+      if (m <= 24) {
+        for (u32 i = 1; i < m; i++) {
+          const u32 v = a[i];
+          u32 j = i;
+          while (j > 0 && a[j - 1] > v) {
+            a[j] = a[j - 1];
+            j--;
+          }
+          a[j] = v;
+        }
+      } else
+        std::sort(a, a + m);
+    }
+#else
     for (size_t i = 0; i < live; i++) {
       u32 d = bcnt[tts[i] >> 20]++;
       t2[d] = tts[i];
@@ -2236,6 +2259,7 @@ static void person_partition(TCtx& W, u32 p) {
     }
     for (size_t i = 0; i < live; i++) ev[L[l2[i]].fill++] = t2[i];
     for (u32 lp : act) L[lp].fill -= L[lp].n;  // back to the start offset
+#endif
   }
   // clicks of persons with events
   W.clp.ensure(ncl + 1);
