@@ -1314,6 +1314,9 @@ struct TCtx {
   // dedup scratch
   Buf<ERec> dtab;
   Buf<u64> dkey, dval, tl2;
+  Buf<u32> dslot;
+  size_t dzero = 0;
+  ERec* dtabp = nullptr;
   std::vector<std::vector<u64>> kills;  // per person partition: (thread << 32 | arena index) of losing copies
   std::vector<u64> klist;               // losing copies found while parsing: thread << 32 | arena index
   // person scratch
@@ -1905,7 +1908,20 @@ static void dedup_partition(TCtx& W, u32 q) {
 #else
   W.dtab.ensure(cap);
   ERec* tab = W.dtab.p;
+#ifdef DDZERO
+  // the table is kept all-empty between partitions: only slots used here are cleared at the end
+  if (W.dzero < cap || W.dtabp != tab) {
+    if (W.dtabp != tab) W.dzero = 0;
+    memset(tab + W.dzero, 0, (cap - W.dzero) * sizeof(ERec));
+    W.dzero = cap;
+    W.dtabp = tab;
+  }
+  W.dslot.ensure(n + 1);
+  u32* used = W.dslot.p;
+  u32 nused = 0;
+#else
   memset(tab, 0, cap * sizeof(ERec));
+#endif
 #endif
   auto kill = [&](u32 g) {  // queue the losing copy for its person partition (no random write)
     if (g == INVALID) return;
@@ -1949,6 +1965,9 @@ static void dedup_partition(TCtx& W, u32 q) {
           ERec& s = tab[i];
           if (s.key == 0) {
             s = e;
+#ifdef DDZERO
+            used[nused++] = (u32)i;
+#endif
             break;
           }
           if (s.key == e.key) {
@@ -1966,6 +1985,9 @@ static void dedup_partition(TCtx& W, u32 q) {
       }
     }
   }
+#if defined(DDZERO) && !defined(SPLITDEDUP)
+  for (u32 k = 0; k < nused; k++) tab[used[k]].key = 0;
+#endif
 }
 
 // ---------------------------------------------------------------- per person
