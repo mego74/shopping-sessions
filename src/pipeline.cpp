@@ -1197,7 +1197,7 @@ struct alignas(64) Strm {
 // A set of output streams (one per partition) sharing an arena. The per-push state of every
 // stream is a 16-byte record in one contiguous array, so scattering touches little cache.
 #ifndef PFW
-#define PFW 0
+#define PFW 64
 #endif
 template <class T>
 struct SHot {
