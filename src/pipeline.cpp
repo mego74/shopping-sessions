@@ -1342,6 +1342,8 @@ struct TCtx {
   // outputs
   std::vector<char> names;
   Buf<char> nbuf;  // person names of this thread's user_daily rows, back to back
+  Buf<char> ucol;  // user_id column of this thread's user_daily rows, PLAIN encoded (u32 length, bytes)
+  size_t ulen = 0;
   size_t nlen = 0;
   std::vector<u64> o_name;  // (offset into names)<<16 | len
   std::vector<i32> o_day, o_sess, o_ev;
@@ -2135,7 +2137,22 @@ static void process_person(TCtx& W, u64 nameref, const u32* ev, u32 n, const CK*
     if (nameref == 1)
 #endif
     {
+#if !defined(OLDNAMES) && !defined(OLDNCOL)
+      {
+        const char* sp = decp(nameref);
+        const u32 sn = decn(nameref);
+        W.ucol.ensure(W.ulen + sn + 64);
+        char* d = W.ucol.p + W.ulen;
+        memcpy(d, &sn, 4);
+        if (LIKELY(sn <= 16))
+          memcpy(d + 4, sp, 16);  // over-copies within the padded input and the buffer slack
+        else
+          memcpy(d + 4, sp, sn);
+        W.ulen += 4 + sn;
+      }
+#else
       W.o_name.push_back(nameref);
+#endif
       W.o_day.push_back((i32)(DAY0 + day));
       W.o_sess.push_back((i32)d_sess);
       W.o_ev.push_back((i32)d_ev);
@@ -2507,6 +2524,10 @@ static void person_partition(TCtx& W, u32 p) {
 #ifdef OLDNAMES
     const u64 nref = ((u64)W.names.size() << 16) | sn;
     W.names.insert(W.names.end(), sp, sp + sn);
+#elif !defined(OLDNCOL)
+    const u64 nref = np;  // rows copy the name straight from the input
+    (void)sp;
+    (void)sn;
 #else
     const u64 nref = ((u64)W.nlen << 16) | sn;
     W.nbuf.ensure(W.nlen + sn + 64);
@@ -2755,7 +2776,11 @@ static void write_user_daily(TCtx& W, const std::string& path) {
                               {"sessions", PT_INT32, -1, 0, false},    {"events", PT_INT32, -1, 0, false},
                               {"revenue_cents", PT_INT64, -1, 0, false}, {"top_category", PT_BYTE_ARRAY, 0, 1, true}};
   std::vector<ColOut> cols(6);
-  size_t n = W.o_name.size();
+  size_t n = W.o_day.size();
+#if !defined(OLDNAMES) && !defined(OLDNCOL)
+  cols[0].ext = W.ucol.p;
+  cols[0].extn = W.ulen;
+#else
   {
     size_t tot = 0;
     for (size_t i = 0; i < n; i++) tot += 4 + (W.o_name[i] & 0xFFFF);
@@ -2774,6 +2799,7 @@ static void write_user_daily(TCtx& W, const std::string& path) {
       o += 4 + len;
     }
   }
+#endif
   cols[1].ext = (const char*)W.o_day.data();
   cols[1].extn = n * 4;
   cols[2].ext = (const char*)W.o_sess.data();
@@ -3078,6 +3104,7 @@ int main(int argc, char** argv) {
         W.names.reserve(est * 8);
 #else
         W.nbuf.ensure(est * 12 + 4096);
+        W.ucol.ensure(est * 20 + 4096);
 #endif
       }
       W.cs_.assign(cd, CStat{0, 0});
@@ -3088,7 +3115,7 @@ int main(int argc, char** argv) {
         person_partition(W, order[i].second);
       }
       // this thread's user_daily rows are final: write them while other threads finish
-      if (!W.o_name.empty()) {
+      if (!W.o_day.empty()) {
         write_user_daily(W, ud + "/part-" + std::to_string(t) + ".parquet");
         wrote_ud.fetch_add(1);
       }
@@ -3161,7 +3188,7 @@ int main(int argc, char** argv) {
       a += TC[t].n_ev_lines;
       b += TC[t].n_ev_valid;
       c += TC[t].n_ck_valid;
-      r += TC[t].o_name.size();
+      r += TC[t].o_day.size();
     }
     fprintf(stderr, "event lines %llu valid-copies %llu clicks %llu user_daily rows %llu P=%d Q=%d\n",
             (unsigned long long)a, (unsigned long long)b, (unsigned long long)c, (unsigned long long)r, PBITS,
