@@ -60,9 +60,9 @@ jobs:
           cat /tmp/p20/events/*.csv /tmp/p20/clicks/*.csv /tmp/p20/links/*.csv > /dev/null
           BINS=$(cat /tmp/bins2)
           for i in 1 2 3 4 5 6 7; do for b in $BINS; do rm -rf /tmp/out
-            /usr/bin/time -f "AB $b wall %e user %U sys %S" env NCPU=4 PIPE_VERBOSE=1 $(cat .github/bench-env 2>/dev/null) /tmp/$b /tmp/p20 /tmp/out 2>/tmp/err_$b.txt >/dev/null
-            tail -1 /tmp/err_$b.txt | tee -a $R
-            [ $i = 7 ] && { echo "-- last $b phases"; cat /tmp/err_$b.txt | grep -v "user_daily rows=" ; } >> $R
+            rc=0; /usr/bin/time -f "AB $b wall %e user %U sys %S" env NCPU=4 PIPE_VERBOSE=1 $(cat .github/bench-env 2>/dev/null) /tmp/$b /tmp/p20 /tmp/out 2>/tmp/err_$b.txt >/dev/null || rc=$?
+            if [ $rc -ne 0 ]; then { echo "FAIL $b rc=$rc"; tail -8 /tmp/err_$b.txt; dmesg 2>/dev/null | tail -3; } | tee -a $R; else tail -1 /tmp/err_$b.txt | tee -a $R; fi
+            if [ $i = 7 ]; then { echo "-- last $b phases"; grep -v "user_daily rows=" /tmp/err_$b.txt; } >> $R; fi
           done; done
           python3 - "$R" <<'PY' | tee -a $R
           import sys, statistics as st
