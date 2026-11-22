@@ -397,7 +397,10 @@ static AI u32 ctz_any(u64 x) {  // any value is fine for x == 0
 #endif
 }
 
-static const u32 FLAT_W = 16384;  // window bytes
+#ifndef FLATW
+#define FLATW 16384
+#endif
+static const u32 FLAT_W = FLATW;  // window bytes
 #ifndef CUNROLL
 #define CUNROLL 6
 #endif
@@ -921,7 +924,10 @@ struct LRec {
   u64 a, b, pa, pb;
 };
 
-static const u32 BLK = 512;
+#ifndef BLKN
+#define BLKN 512
+#endif
+static const u32 BLK = BLKN;
 static const u32 CHB = 4096;  // blocks per chunk
 
 template <class T>
@@ -2555,7 +2561,10 @@ int main(int argc, char** argv) {
 
   // parse events + clicks
   {
-    std::vector<Chunk> ec = make_chunks(evf, 4 << 20), cc = make_chunks(ckf, 4 << 20);
+#ifndef CHUNKMB
+#define CHUNKMB 4
+#endif
+    std::vector<Chunk> ec = make_chunks(evf, (u64)CHUNKMB << 20), cc = make_chunks(ckf, (u64)CHUNKMB << 20);
     struct Job {
       int kind;
       Chunk c;
