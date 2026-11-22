@@ -2608,6 +2608,8 @@ int main(int argc, char** argv) {
 #endif
   logt("dedup");
 
+  std::string ud = OUTD + "/user_daily", cdd = OUTD + "/campaign_daily";
+  std::atomic<int> wrote_ud{0};
   {
     u32 P = 1u << PBITS;
     std::vector<std::pair<u64, u32>> order(P);
@@ -2617,6 +2619,9 @@ int main(int argc, char** argv) {
       order[p] = {s, p};
     }
     std::sort(order.begin(), order.end(), [](auto& a, auto& b) { return a.first > b.first; });
+    mkdir(OUTD.c_str(), 0755);
+    mkdir(ud.c_str(), 0755);
+    mkdir(cdd.c_str(), 0755);
     std::atomic<u32> next{0};
     par_run([&](int t) {
       TCtx& W = TC[t];
@@ -2642,6 +2647,11 @@ int main(int argc, char** argv) {
         if (i >= P) break;
         person_partition(W, order[i].second);
       }
+      // this thread's user_daily rows are final: write them while other threads finish
+      if (!W.o_name.empty()) {
+        write_user_daily(W, ud + "/part-" + std::to_string(t) + ".parquet");
+        wrote_ud.fetch_add(1);
+      }
     });
   }
   logt("persons");
@@ -2652,10 +2662,6 @@ int main(int argc, char** argv) {
   }
 
   // outputs
-  std::string ud = OUTD + "/user_daily", cdd = OUTD + "/campaign_daily";
-  mkdir(OUTD.c_str(), 0755);
-  mkdir(ud.c_str(), 0755);
-  mkdir(cdd.c_str(), 0755);
   {
     std::atomic<int> next{0};
     par_run([&](int t) {
@@ -2704,11 +2710,8 @@ int main(int argc, char** argv) {
           }
         write_parquet(cdd + "/part-0.parquet", defs, cols, nr);
       }
-      TCtx& W = TC[t];
-      size_t tot = 0;
-      for (int u = 0; u < NT; u++) tot += TC[u].o_name.size();
-      if (W.o_name.empty() && !(t == 0 && tot == 0)) return;
-      write_user_daily(W, ud + "/part-" + std::to_string(t) + ".parquet");
+      // user_daily parts were written by each thread; an empty table still needs one file
+      if (t == 0 && wrote_ud.load() == 0) write_user_daily(TC[0], ud + "/part-0.parquet");
     });
   }
   logt("written");
