@@ -107,6 +107,8 @@ jobs:
           rm -rf /tmp/out; $PERF record -F 4999 -o /tmp/perf.data env NCPU=4 /tmp/cand /tmp/p20 /tmp/out >/dev/null 2>&1
           { echo "== perf by symbol"; $PERF report -i /tmp/perf.data --no-children --sort sym --stdio 2>/dev/null | grep -v '^#' | grep -v '^$' | head -30;
             echo "== perf by srcline (top)"; $PERF report -i /tmp/perf.data --no-children --sort srcline --stdio 2>/dev/null | grep -v '^#' | grep -v '^$' | head -120; } | tee -a $R
+          for b in $(cat /tmp/bins2); do rm -rf /tmp/out; $PERF stat -x, -e instructions:u,cycles:u,branch-misses:u,instructions:k,cycles:k -o /tmp/ps_$b.txt env NCPU=4 /tmp/$b /tmp/p20 /tmp/out >/dev/null 2>&1
+            echo "PSTAT $b $(grep -v '^#' /tmp/ps_$b.txt | grep -v '^$' | awk -F, '{printf "%s=%.0fM ", $3, $1/1e6}')"; done | tee -a $R
       - name: Publish
         if: always()
         run: |
