@@ -1,0 +1,333 @@
+commit c16fecb42c41d9ecaac8409f5688c45c94a78143
+CPU(s):                                  4
+Model name:                              AMD EPYC 9V74 80-Core Processor
+L2 cache:                                2 MiB (2 instances)
+L3 cache:                                32 MiB (1 instance)
+7.0.0-1020-azure
+thp always [madvise] never
+baseline 9ee8a2185efc9d037125c603d8c229482e6303a0
+variant packsc: -DPACKSC
+variant ddpf8: -DDDPF=8
+variant ddpf16: -DDDPF=16
+variant pack_dd8: -DPACKSC -DDDPF=8
+total 1104
+drwxr-xr-x  2 runner runner    4096 Nov 22 07:49 .
+drwxrwxrwt 16 root   root      4096 Nov 22 07:49 ..
+-rw-r--r--  1 runner runner   99050 Nov 22 07:49 pipeline.cpp
+-rw-r--r--  1 runner runner 1017784 Nov 22 07:49 pipeline.o
+pipeline.cpp: In function ‘(static initializers for pipeline.cpp)’:
+pipeline.cpp:3102:1: warning: ‘/tmp/pgo/pipeline.gcda’ profile count data file not found [-Wmissing-profile]
+ 3102 | }
+      | ^
+== correctness cand
+36/36 fixtures passed
+MATCH
+== correctness pgo_bin
+36/36 fixtures passed
+MATCH
+AB base wall 2.93 user 10.17 sys 1.08
+AB cand wall 2.89 user 10.03 sys 1.10
+AB packsc wall 2.87 user 9.85 sys 1.15
+AB ddpf8 wall 2.90 user 9.85 sys 1.11
+AB ddpf16 wall 2.84 user 9.81 sys 1.14
+AB pack_dd8 wall 2.83 user 9.76 sys 1.10
+AB pgo_bin wall 2.91 user 9.85 sys 1.14
+AB base wall 2.87 user 9.91 sys 1.12
+AB cand wall 2.86 user 9.84 sys 1.14
+AB packsc wall 2.88 user 9.83 sys 1.14
+AB ddpf8 wall 2.92 user 9.88 sys 1.12
+AB ddpf16 wall 2.87 user 9.89 sys 1.13
+AB pack_dd8 wall 2.87 user 9.82 sys 1.13
+AB pgo_bin wall 2.89 user 9.88 sys 1.11
+AB base wall 2.86 user 9.88 sys 1.12
+AB cand wall 2.86 user 9.88 sys 1.12
+AB packsc wall 2.85 user 9.80 sys 1.17
+AB ddpf8 wall 2.88 user 9.83 sys 1.15
+AB ddpf16 wall 2.84 user 9.76 sys 1.16
+AB pack_dd8 wall 2.84 user 9.75 sys 1.16
+AB pgo_bin wall 2.88 user 9.85 sys 1.20
+AB base wall 2.90 user 10.02 sys 1.11
+AB cand wall 2.90 user 10.02 sys 1.13
+AB packsc wall 2.87 user 9.90 sys 1.16
+AB ddpf8 wall 2.95 user 9.89 sys 1.15
+AB ddpf16 wall 2.86 user 9.89 sys 1.11
+AB pack_dd8 wall 2.87 user 9.91 sys 1.13
+AB pgo_bin wall 3.00 user 9.97 sys 1.15
+AB base wall 2.88 user 9.93 sys 1.15
+AB cand wall 2.88 user 9.93 sys 1.14
+AB packsc wall 2.85 user 9.84 sys 1.14
+AB ddpf8 wall 2.90 user 9.88 sys 1.14
+AB ddpf16 wall 2.86 user 9.85 sys 1.13
+AB pack_dd8 wall 2.84 user 9.75 sys 1.15
+AB pgo_bin wall 2.88 user 9.82 sys 1.09
+AB base wall 2.85 user 9.83 sys 1.14
+AB cand wall 2.85 user 9.88 sys 1.10
+AB packsc wall 2.82 user 9.77 sys 1.11
+AB ddpf8 wall 2.83 user 9.76 sys 1.11
+AB ddpf16 wall 2.80 user 9.61 sys 1.13
+AB pack_dd8 wall 2.78 user 9.61 sys 1.11
+AB pgo_bin wall 2.87 user 9.77 sys 1.10
+AB base wall 2.78 user 9.58 sys 1.13
+-- last base phases
+[    0.10 ms] small tables
+[    2.94 ms] mapped
+[   57.59 ms] links parsed
+[  186.94 ms] links done
+[  186.98 ms] small tables joined
+[ 1900.72 ms] parsed events+clicks
+[ 2055.47 ms] dedup
+[ 2708.38 ms] persons
+  person cpu-ms: group 231.5 scatter 507.7 names 0.0 process 1381.8
+[ 2709.94 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2724.68 ms] released
+AB base wall 2.78 user 9.58 sys 1.13
+AB cand wall 2.82 user 9.73 sys 1.09
+-- last cand phases
+[    0.10 ms] small tables
+[    3.01 ms] mapped
+[   62.07 ms] links parsed
+[  200.49 ms] links done
+[  200.53 ms] small tables joined
+[ 1918.44 ms] parsed events+clicks
+[ 2077.87 ms] dedup
+[ 2744.97 ms] persons
+  person cpu-ms: group 238.7 scatter 534.0 names 0.0 process 1409.1
+[ 2746.54 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2761.64 ms] released
+AB cand wall 2.82 user 9.73 sys 1.09
+AB packsc wall 2.81 user 9.70 sys 1.10
+-- last packsc phases
+[    0.10 ms] small tables
+[    2.99 ms] mapped
+[   56.34 ms] links parsed
+[  192.93 ms] links done
+[  192.97 ms] small tables joined
+[ 1909.13 ms] parsed events+clicks
+[ 2068.59 ms] dedup
+[ 2731.75 ms] persons
+  person cpu-ms: group 232.4 scatter 502.5 names 0.0 process 1420.2
+[ 2733.36 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2748.07 ms] released
+AB packsc wall 2.81 user 9.70 sys 1.10
+AB ddpf8 wall 2.86 user 9.62 sys 1.12
+-- last ddpf8 phases
+[    0.10 ms] small tables
+[    3.14 ms] mapped
+[   57.11 ms] links parsed
+[  192.32 ms] links done
+[  192.36 ms] small tables joined
+[ 1937.71 ms] parsed events+clicks
+[ 2089.78 ms] dedup
+[ 2778.49 ms] persons
+  person cpu-ms: group 234.7 scatter 532.5 names 0.0 process 1406.8
+[ 2790.08 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2807.90 ms] released
+AB ddpf8 wall 2.86 user 9.62 sys 1.12
+AB ddpf16 wall 2.80 user 9.70 sys 1.07
+-- last ddpf16 phases
+[    0.10 ms] small tables
+[    3.02 ms] mapped
+[   58.59 ms] links parsed
+[  192.09 ms] links done
+[  192.14 ms] small tables joined
+[ 1906.03 ms] parsed events+clicks
+[ 2060.88 ms] dedup
+[ 2726.87 ms] persons
+  person cpu-ms: group 234.3 scatter 530.1 names 0.0 process 1409.8
+[ 2728.41 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2742.97 ms] released
+AB ddpf16 wall 2.80 user 9.70 sys 1.07
+AB pack_dd8 wall 2.85 user 9.66 sys 1.13
+-- last pack_dd8 phases
+[    0.10 ms] small tables
+[    3.05 ms] mapped
+[   57.08 ms] links parsed
+[  199.66 ms] links done
+[  199.70 ms] small tables joined
+[ 1913.42 ms] parsed events+clicks
+[ 2065.33 ms] dedup
+[ 2776.72 ms] persons
+  person cpu-ms: group 241.5 scatter 494.1 names 0.0 process 1591.9
+[ 2778.30 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2792.90 ms] released
+AB pack_dd8 wall 2.85 user 9.66 sys 1.13
+AB pgo_bin wall 2.83 user 9.76 sys 1.04
+-- last pgo_bin phases
+[    0.10 ms] small tables
+[    2.89 ms] mapped
+[   57.51 ms] links parsed
+[  190.15 ms] links done
+[  190.19 ms] small tables joined
+[ 1911.81 ms] parsed events+clicks
+[ 2063.58 ms] dedup
+[ 2759.02 ms] persons
+  person cpu-ms: group 262.7 scatter 553.4 names 0.0 process 1489.8
+[ 2760.54 ms] written
+event lines 64744588 valid-copies 63353240 clicks 15248970 user_daily rows 6671219 P=10 Q=12
+[ 2775.54 ms] released
+AB pgo_bin wall 2.83 user 9.76 sys 1.04
+SUMMARY base      : median wall 2.865s  min 2.780s  median user 9.89s  ratio 1.000
+SUMMARY cand      : median wall 2.860s  min 2.820s  median user 9.88s  ratio 0.998
+SUMMARY packsc    : median wall 2.850s  min 2.810s  median user 9.82s  ratio 0.995
+SUMMARY ddpf8     : median wall 2.890s  min 2.830s  median user 9.84s  ratio 1.009
+SUMMARY ddpf16    : median wall 2.840s  min 2.800s  median user 9.79s  ratio 0.991
+SUMMARY pack_dd8  : median wall 2.845s  min 2.780s  median user 9.75s  ratio 0.993
+SUMMARY pgo_bin   : median wall 2.880s  min 2.830s  median user 9.84s  ratio 1.005
+== perf by symbol
+    38.61%  [.] events_chunk(TCtx&, MFile const&, unsigned long, unsigned long)
+    18.01%  [.] person_partition(TCtx&, unsigned int)
+    10.63%  [.] flushE(TCtx&, PendE*, int)
+     7.91%  [.] clicks_chunk(TCtx&, MFile const&, unsigned long, unsigned long)
+     4.72%  [.] dedup_partition(TCtx&, unsigned int)
+     2.22%  [k] kernel_init_pages
+     1.98%  [.] flushC(TCtx&, PendC*, int)
+     1.46%  [k] do_user_addr_fault
+     1.39%  [.] __memmove_avx512_unaligned_erms
+     0.87%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#2}>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#2}&&)::{lambda()#1}> > >::_M_run()
+     0.77%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#4}>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#4}&&)::{lambda()#1}> > >::_M_run()
+     0.70%  [.] unsigned long& std::vector<unsigned long, std::allocator<unsigned long> >::emplace_back<unsigned long>(unsigned long&&) [clone .isra.0]
+     0.65%  [k] _raw_spin_unlock_irqrestore
+     0.63%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#7}>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#7}&&)::{lambda()#1}> > >::_M_run()
+     0.60%  [.] links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)
+     0.60%  [.] links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#1}::operator()(int) const
+     0.53%  [.] write_user_daily(TCtx&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+     0.52%  [.] __memcmp_evex_movbe
+     0.48%  [.] int& std::vector<int, std::allocator<int> >::emplace_back<int>(int&&) [clone .isra.0]
+     0.35%  [.] __memset_avx512_unaligned_erms
+     0.30%  [k] __handle_mm_fault
+     0.26%  [k] do_anonymous_page
+     0.24%  [k] __rmqueue_pcplist
+     0.19%  [k] copy_folio_from_iter_atomic
+     0.19%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#3}>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#3}&&)::{lambda()#1}> > >::_M_run()
+     0.15%  [k] handle_mm_fault
+     0.15%  [k] filemap_map_folio_range
+     0.14%  [k] lruvec_stat_mod_folio
+     0.14%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#6}>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#6}&&)::{lambda()#1}> > >::_M_run()
+     0.14%  [.] std::thread::_State_impl<std::thread::_Invoker<std::tuple<par_run<links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#5}>(links_phase(std::vector<MFile, std::allocator<MFile> > const&, unsigned long)::{lambda(int)#5}&&)::{lambda()#1}> > >::_M_run()
+== perf by srcline (top)
+     2.46%  pipeline.cpp:1233
+     2.33%  ??:0
+     2.23%  pipeline.cpp:1795
+     2.18%  kernel_init_pages+58
+     2.07%  pipeline.cpp:1590
+     1.95%  pipeline.cpp:1665
+     1.88%  pipeline.cpp:1005
+     1.87%  pipeline.cpp:880
+     1.81%  pipeline.cpp:1909
+     1.55%  bmiintrin.h:192
+     1.53%  pipeline.cpp:1006
+     1.47%  pipeline.cpp:176
+     1.39%  pipeline.cpp:1244
+     1.33%  do_user_addr_fault+200
+     1.21%  pipeline.cpp:382
+     1.13%  pipeline.cpp:2160
+     1.13%  pipeline.cpp:201
+     1.07%  pipeline.cpp:829
+     1.06%  pipeline.cpp:822
+     1.04%  pipeline.cpp:487
+     1.03%  pipeline.cpp:2430
+     0.95%  pipeline.cpp:202
+     0.89%  pipeline.cpp:1239
+     0.85%  pipeline.cpp:1009
+     0.84%  pipeline.cpp:2228
+     0.82%  pipeline.cpp:1873
+     0.82%  pipeline.cpp:2297
+     0.82%  pipeline.cpp:2038
+     0.81%  avx2intrin.h:233
+     0.81%  pipeline.cpp:542
+     0.80%  vector.tcc:119
+     0.80%  pipeline.cpp:669
+     0.80%  bmi2intrin.h:78
+     0.80%  pipeline.cpp:2293
+     0.74%  pipeline.cpp:203
+     0.73%  pipeline.cpp:1240
+     0.72%  pipeline.cpp:1745
+     0.69%  pipeline.cpp:1796
+     0.65%  _raw_spin_unlock_irqrestore+33
+     0.64%  pipeline.cpp:2380
+     0.64%  pipeline.cpp:1396
+     0.63%  pipeline.cpp:543
+     0.61%  pipeline.cpp:836
+     0.60%  pipeline.cpp:652
+     0.57%  pipeline.cpp:208
+     0.57%  pipeline.cpp:1752
+     0.57%  pipeline.cpp:335
+     0.55%  pipeline.cpp:386
+     0.53%  emmintrin.h:1456
+     0.51%  pipeline.cpp:1769
+     0.51%  pipeline.cpp:560
+     0.51%  pipeline.cpp:945
+     0.50%  pipeline.cpp:1913
+     0.50%  pipeline.cpp:1885
+     0.50%  vector.tcc:114
+     0.49%  pipeline.cpp:522
+     0.49%  pipeline.cpp:2226
+     0.48%  pipeline.cpp:2292
+     0.45%  pipeline.cpp:2370
+     0.45%  pipeline.cpp:561
+     0.45%  pipeline.cpp:385
+     0.44%  pipeline.cpp:1374
+     0.42%  pipeline.cpp:1543
+     0.42%  stl_algo.h:1994
+     0.39%  pipeline.cpp:881
+     0.39%  pipeline.cpp:489
+     0.38%  pipeline.cpp:381
+     0.38%  stl_vector.h:1264
+     0.38%  emmintrin.h:1419
+     0.38%  pipeline.cpp:635
+     0.38%  stl_vector.h:1119
+     0.37%  emmintrin.h:1157
+     0.37%  pipeline.cpp:207
+     0.37%  pipeline.cpp:935
+     0.37%  pipeline.cpp:1916
+     0.36%  pipeline.cpp:2111
+     0.36%  pipeline.cpp:2168
+     0.34%  pipeline.cpp:1512
+     0.34%  pipeline.cpp:816
+     0.34%  pipeline.cpp:934
+     0.34%  pipeline.cpp:940
+     0.33%  pipeline.cpp:554
+     0.33%  emmintrin.h:1109
+     0.32%  pipeline.cpp:2134
+     0.31%  pipeline.cpp:526
+     0.30%  pipeline.cpp:2036
+     0.30%  pipeline.cpp:1605
+     0.30%  pipeline.cpp:634
+     0.30%  pipeline.cpp:241
+     0.29%  pipeline.cpp:878
+     0.29%  pipeline.cpp:2114
+     0.29%  pipeline.cpp:626
+     0.26%  pipeline.cpp:1908
+     0.26%  pipeline.cpp:2035
+     0.26%  stl_algobase.h:1509
+     0.25%  atomic_base.h:501
+     0.25%  pipeline.cpp:2379
+     0.25%  pipeline.cpp:486
+     0.25%  string_fortified.h:29
+     0.24%  pipeline.cpp:1671
+     0.24%  pipeline.cpp:242
+     0.24%  emmintrin.h:230
+     0.24%  pipeline.cpp:1589
+     0.24%  pipeline.cpp:2225
+     0.24%  pipeline.cpp:1510
+     0.24%  pipeline.cpp:627
+     0.23%  pipeline.cpp:1668
+     0.23%  pipeline.cpp:2377
+     0.23%  tmmintrin.h:114
+     0.22%  pipeline.cpp:1697
+     0.22%  pipeline.cpp:2385
+     0.22%  avxintrin.h:1281
+     0.21%  pipeline.cpp:830
+     0.21%  stl_vector.h:1423
+     0.21%  pipeline.cpp:2037
+     0.21%  pipeline.cpp:1749
+     0.21%  pipeline.cpp:1798
+     0.20%  pipeline.cpp:1733
+     0.20%  pipeline.cpp:2046
+     0.19%  copy_folio_from_iter_atomic+193
