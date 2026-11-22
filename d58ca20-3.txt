@@ -1,0 +1,190 @@
+commit d58ca20f403affaf55798b93d38f017fe2c5f7e7
+CPU(s):                                  4
+Model name:                              AMD EPYC 9V45 96-Core Processor
+L2 cache:                                2 MiB (2 instances)
+L3 cache:                                32 MiB (1 instance)
+7.0.0-1020-azure
+thp always [madvise] never
+baseline c2864db
+variant dl: -DDUMMY_SAME
+== correctness
+36/36 fixtures passed
+MATCH
+AB base wall 1.00 user 3.39 sys 0.32
+FAIL cand rc=139
+  t1 user_daily rows=554414 build=13.6ms write=17.5ms
+  t2 user_daily rows=570749 build=13.9ms write=18.6ms
+  t3 user_daily rows=563244 build=13.7ms write=21.0ms
+  t0 user_daily rows=561954 build=11.9ms write=19.9ms
+[  898.07 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB cand wall 6.96 user 3.27 sys 1.04
+FAIL dl rc=139
+  t2 user_daily rows=562563 build=14.1ms write=16.8ms
+  t3 user_daily rows=568035 build=14.0ms write=18.1ms
+  t1 user_daily rows=565958 build=14.4ms write=19.1ms
+  t0 user_daily rows=553805 build=11.9ms write=18.9ms
+[  950.12 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB dl wall 3.85 user 3.25 sys 1.15
+AB base wall 1.02 user 3.41 sys 0.30
+FAIL cand rc=139
+  t2 user_daily rows=567214 build=13.3ms write=16.6ms
+  t3 user_daily rows=570280 build=13.3ms write=18.0ms
+  t1 user_daily rows=567313 build=13.5ms write=19.1ms
+  t0 user_daily rows=545554 build=11.0ms write=19.1ms
+[  876.95 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB cand wall 4.73 user 3.08 sys 1.08
+FAIL dl rc=139
+  t1 user_daily rows=535417 build=12.8ms write=16.2ms
+  t3 user_daily rows=575460 build=14.3ms write=17.0ms
+  t2 user_daily rows=570660 build=14.4ms write=18.3ms
+  t0 user_daily rows=568824 build=11.7ms write=19.1ms
+[  955.26 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB dl wall 3.58 user 3.20 sys 1.18
+AB base wall 1.08 user 3.66 sys 0.31
+FAIL cand rc=139
+  t2 user_daily rows=528022 build=13.4ms write=16.7ms
+  t1 user_daily rows=571971 build=14.4ms write=17.9ms
+  t3 user_daily rows=578796 build=14.5ms write=19.1ms
+  t0 user_daily rows=571572 build=12.3ms write=18.3ms
+[  910.69 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB cand wall 3.77 user 3.21 sys 1.17
+FAIL dl rc=139
+  t1 user_daily rows=558476 build=14.0ms write=17.5ms
+  t3 user_daily rows=557192 build=14.2ms write=18.6ms
+  t2 user_daily rows=568691 build=14.7ms write=19.5ms
+  t0 user_daily rows=566002 build=12.1ms write=19.7ms
+[  939.26 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB dl wall 3.59 user 3.19 sys 1.09
+AB base wall 1.01 user 3.40 sys 0.31
+FAIL cand rc=139
+  t3 user_daily rows=558882 build=13.7ms write=17.5ms
+  t1 user_daily rows=570047 build=13.9ms write=18.6ms
+  t2 user_daily rows=561499 build=14.1ms write=19.7ms
+  t0 user_daily rows=559933 build=11.8ms write=19.1ms
+[  911.27 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB cand wall 3.58 user 3.23 sys 1.11
+FAIL dl rc=139
+  t1 user_daily rows=558847 build=14.1ms write=17.0ms
+  t2 user_daily rows=570253 build=14.1ms write=18.4ms
+  t3 user_daily rows=562974 build=14.5ms write=19.3ms
+  t0 user_daily rows=558287 build=11.7ms write=19.6ms
+[  925.68 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB dl wall 3.68 user 3.21 sys 1.09
+AB base wall 1.00 user 3.41 sys 0.31
+FAIL cand rc=139
+  t0 user_daily rows=299445 build=5.6ms write=9.4ms
+  t1 user_daily rows=645870 build=15.7ms write=20.2ms
+  t3 user_daily rows=654980 build=22.3ms write=18.1ms
+  t2 user_daily rows=650066 build=26.0ms write=19.1ms
+[  981.98 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB cand wall 3.90 user 3.35 sys 1.21
+FAIL dl rc=139
+  t3 user_daily rows=558784 build=14.6ms write=17.2ms
+  t2 user_daily rows=566592 build=14.6ms write=18.7ms
+  t1 user_daily rows=566850 build=14.7ms write=20.0ms
+  t0 user_daily rows=558135 build=12.2ms write=19.1ms
+[  995.73 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB dl wall 3.71 user 3.43 sys 1.13
+AB base wall 1.00 user 3.40 sys 0.31
+FAIL cand rc=139
+  t1 user_daily rows=544970 build=13.3ms write=16.5ms
+  t3 user_daily rows=571233 build=13.7ms write=17.4ms
+  t2 user_daily rows=566707 build=13.9ms write=19.2ms
+  t0 user_daily rows=567451 build=11.8ms write=19.5ms
+[  917.37 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB cand wall 3.51 user 3.25 sys 1.03
+FAIL dl rc=139
+  t1 user_daily rows=561926 build=13.7ms write=16.8ms
+  t3 user_daily rows=567270 build=13.9ms write=17.9ms
+  t2 user_daily rows=567871 build=14.0ms write=19.1ms
+  t0 user_daily rows=553294 build=11.5ms write=19.0ms
+[  919.07 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB dl wall 3.78 user 3.14 sys 1.11
+AB base wall 1.00 user 3.39 sys 0.30
+-- last base phases
+[    0.10 ms] small tables
+[    2.68 ms] mapped
+[   22.62 ms] links parsed
+[  119.91 ms] links done
+[  119.96 ms] small tables joined
+[  760.85 ms] parsed events+clicks
+[  800.10 ms] dedup
+[  939.76 ms] persons
+  person cpu-ms: group 60.4 scatter 113.8 names 0.0 process 381.0
+[  977.33 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+[  981.96 ms] released
+AB base wall 1.00 user 3.39 sys 0.30
+FAIL cand rc=139
+  t2 user_daily rows=558047 build=13.5ms write=17.7ms
+  t1 user_daily rows=563185 build=14.0ms write=18.5ms
+  t3 user_daily rows=566709 build=14.1ms write=19.8ms
+  t0 user_daily rows=562420 build=11.7ms write=20.2ms
+[  904.57 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB cand wall 3.67 user 3.21 sys 1.13
+-- last cand phases
+[    0.09 ms] small tables
+[    2.46 ms] mapped
+[   21.50 ms] links parsed
+[   55.13 ms] links done
+[   55.17 ms] small tables joined
+[  690.64 ms] parsed events+clicks
+[  727.91 ms] dedup
+[  866.26 ms] persons
+  person cpu-ms: group 60.6 scatter 115.3 names 0.0 process 373.7
+[  904.57 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB cand wall 3.67 user 3.21 sys 1.13
+FAIL dl rc=139
+  t1 user_daily rows=368878 build=9.3ms write=12.1ms
+  t2 user_daily rows=620083 build=15.7ms write=19.2ms
+  t0 user_daily rows=618846 build=13.5ms write=18.2ms
+  t3 user_daily rows=642554 build=15.5ms write=23.1ms
+[  960.00 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB dl wall 3.61 user 3.23 sys 1.14
+-- last dl phases
+[    0.09 ms] small tables
+[    3.03 ms] mapped
+[   26.37 ms] links parsed
+[   73.64 ms] links done
+[   73.68 ms] small tables joined
+[  727.42 ms] parsed events+clicks
+[  765.24 ms] dedup
+[  919.45 ms] persons
+  person cpu-ms: group 66.1 scatter 128.5 names 0.0 process 418.5
+[  960.00 ms] written
+event lines 21581187 valid-copies 21117183 clicks 5082862 user_daily rows 2250361 P=9 Q=11
+Command terminated by signal 11
+AB dl wall 3.61 user 3.23 sys 1.14
+SUMMARY base      : median wall 1.000s  min 1.000s  median user 3.40s  ratio 1.000
+SUMMARY cand      : median wall 3.720s  min 3.510s  median user 3.22s  ratio 3.720
+SUMMARY dl        : median wall 3.645s  min 3.580s  median user 3.22s  ratio 3.645
