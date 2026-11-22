@@ -1280,6 +1280,7 @@ struct TCtx {
   u64 n_ev_lines = 0, n_ev_valid = 0, n_ck_valid = 0;
   // dedup scratch
   Buf<ERec> dtab;
+  Buf<u64> dkey, dval;
   std::vector<std::vector<u64>> kills;  // per person partition: (thread << 32 | arena index) of losing copies
   std::vector<u64> klist;               // losing copies found while parsing: thread << 32 | arena index
   // person scratch
@@ -1824,11 +1825,20 @@ static void dedup_partition(TCtx& W, u32 q) {
   if (n == 0) return;
   size_t cap = 16;
   while (cap < n * 2) cap <<= 1;
+  const u64 mask = cap - 1;
+  int lg = __builtin_ctzll(cap);
+#ifndef OLDDEDUP
+  // keys only are cleared; a slot's (ingest, record) is written when its key is
+  W.dkey.ensure(cap);
+  W.dval.ensure(cap);
+  u64* key = W.dkey.p;
+  u64* val = W.dval.p;
+  memset(key, 0, cap * sizeof(u64));
+#else
   W.dtab.ensure(cap);
   ERec* tab = W.dtab.p;
   memset(tab, 0, cap * sizeof(ERec));
-  const u64 mask = cap - 1;
-  int lg = __builtin_ctzll(cap);
+#endif
   auto kill = [&](u32 g) {  // queue the losing copy for its person partition (no random write)
     if (g == INVALID) return;
     u32 t = g >> TSHIFT, idx = g & ((1u << TSHIFT) - 1);
@@ -1843,6 +1853,27 @@ static void dedup_partition(TCtx& W, u32 q) {
       for (u32 k = 0; k < cnt; k++) {
         const ERec& e = r[k];
         u64 i = (e.key >> (64 - lg)) & mask;
+#ifndef OLDDEDUP
+        for (;;) {
+          const u64 sk = key[i];
+          if (sk == 0) {
+            key[i] = e.key;
+            val[i] = ((u64)e.ing << 32) | e.gidx;
+            break;
+          }
+          if (sk == e.key) {
+            const u32 sing = (u32)(val[i] >> 32), sg = (u32)val[i];
+            if (e.ing < sing) {
+              kill(sg);
+              val[i] = ((u64)e.ing << 32) | e.gidx;
+            } else {
+              kill(e.gidx);
+            }
+            break;
+          }
+          i = (i + 1) & mask;
+        }
+#else
         for (;;) {
           ERec& s = tab[i];
           if (s.key == 0) {
@@ -1860,6 +1891,7 @@ static void dedup_partition(TCtx& W, u32 q) {
           }
           i = (i + 1) & mask;
         }
+#endif
       }
     }
   }
@@ -2724,7 +2756,7 @@ int main(int argc, char** argv) {
   {
     double est = (double)evbytes / 85.0;
 #ifndef PDIV
-#define PDIV 30000.0
+#define PDIV 60000.0
 #endif
 #ifndef QDIV
 #define QDIV 12000.0
