@@ -2429,6 +2429,10 @@ int main(int argc, char** argv) {
     OUTD = argv[argc - 1];
   }
   NT = getenv("NCPU") ? atoi(getenv("NCPU")) : (int)std::thread::hardware_concurrency();
+#ifndef TMULT
+#define TMULT 1.0
+#endif
+  NT = (int)(NT * TMULT + 0.5);  // more threads than CPUs hides memory stalls
   if (NT < 1) NT = 1;
   if (NT > 16) NT = 16;
   {
