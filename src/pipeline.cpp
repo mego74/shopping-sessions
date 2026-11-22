@@ -933,6 +933,18 @@ static AI bool parse_ts(const char* s, u32 n, i64& ms) {
   if (n == 0) return false;
   if (n >= 5 && s[4] == '-') return parse_f12(s, n, ms);
   if (LIKELY(n == 13)) {
+#ifdef TSSE
+    // 13 digits right-aligned in 16 bytes (the 3 bytes before s are zeroed), then 2-4-8-digit merges
+    const __m128i d = _mm_sub_epi8(_mm_loadu_si128((const __m128i*)(s - 3)), _mm_set1_epi8('0'));
+    const u32 dm = (u32)_mm_movemask_epi8(_mm_cmpeq_epi8(_mm_min_epu8(d, _mm_set1_epi8(9)), d));
+    if ((dm & 0xFFF8u) != 0xFFF8u) return false;
+    const __m128i z = _mm_and_si128(d, _mm_setr_epi8(0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1));
+    const __m128i p1 = _mm_maddubs_epi16(z, _mm_setr_epi8(10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1));
+    const __m128i p2 = _mm_madd_epi16(p1, _mm_setr_epi16(100, 1, 100, 1, 100, 1, 100, 1));
+    const __m128i p4 = _mm_madd_epi16(_mm_packus_epi32(p2, p2), _mm_setr_epi16(10000, 1, 10000, 1, 10000, 1, 10000, 1));
+    ms = (i64)((u64)(u32)_mm_cvtsi128_si32(p4) * 100000000ULL + (u64)(u32)_mm_extract_epi32(p4, 1));
+    return true;
+#endif
     u64 a = load64(s), b = load64(s + 5);  // bytes 0..7 and 5..12
     if (all_digits8(a) & all_digits8(b)) {
       ms = (i64)(swar8(a) * 100000 + (swar8(b) % 100000));
@@ -1649,6 +1661,21 @@ static inline void flushE(TCtx& W, PendE* pe, int n) {
 static inline void flushE(TCtx& W, PendE* pe, int n) {
   const u32 tid = (u32)W.id << TSHIFT;
   const u32 lim = 1u << TSHIFT;
+#ifndef OLDFLUSH
+  for (int i = 0; i < n; i++) {  // lookups were prefetched when the batch was filled
+    const u32 p = person_of(W, pe[i].huid, pe[i].np);
+    const u32 x = W.ps.push(p & PMASK, {p, pe[i].ts}, W.pa);
+    if (UNLIKELY(x >= lim - 1)) die("too many records per thread");
+    if (UNLIKELY((pe[i].xp >> 24) != 0xFF)) {
+      const u32 b = x / BLK;
+      W.us.push(p & PMASK, {p, pe[i].ts, pe[i].xp, W.pa.ord[b] * BLK + x % BLK}, W.ua);
+    }
+#ifndef DIAG_NOEREC
+    W.es.push(pe[i].q, {pe[i].ekey, pe[i].ing, tid | x}, W.ea);
+#endif
+  }
+  return;
+#endif
   u32 pid[PEND], idx[PEND];
   for (int i = 0; i < n; i++) pid[i] = person_of(W, pe[i].huid, pe[i].np);
   for (int i = 0; i < n; i++) idx[i] = W.ps.push(pid[i] & PMASK, {pid[i], pe[i].ts}, W.pa);
