@@ -1,0 +1,45 @@
+Model name:                              AMD EPYC 7763 64-Core Processor
+exit 0
+[    0.12 ms] small tables
+[    6.21 ms] mapped
+[   48.39 ms] links parsed
+[  164.51 ms] links done
+[  164.56 ms] small tables joined
+[ 2367.62 ms] parsed events+clicks
+[ 2577.08 ms] dedup
+  t2 user_daily rows=1630825 build=55.9ms write=73.2ms
+  t1 user_daily rows=1662457 build=54.4ms write=83.0ms
+  t3 user_daily rows=1661525 build=61.4ms write=80.1ms
+  t0 user_daily rows=1673360 build=59.0ms write=84.2ms
+[ 3413.24 ms] persons
+[ 3415.79 ms] written
+event lines 64770937 valid-copies 63116505 clicks 15271464 user_daily rows 6628167 P=10 Q=12
+[ 3433.90 ms] released
+RUN ncpu=4 wall 3.48 user 11.93 sys 1.31 maxrss 9456764KB
+exit 0
+[    0.11 ms] small tables
+[    6.28 ms] mapped
+[   52.07 ms] links parsed
+[  183.86 ms] links done
+[  183.90 ms] small tables joined
+[ 2396.13 ms] parsed events+clicks
+[ 2616.89 ms] dedup
+  t3 user_daily rows=634017 build=42.5ms write=55.4ms
+  t1 user_daily rows=677997 build=52.6ms write=53.6ms
+  t7 user_daily rows=711447 build=51.4ms write=56.8ms
+  t5 user_daily rows=668001 build=51.3ms write=58.8ms
+  t2 user_daily rows=829934 build=57.6ms write=55.4ms
+  t6 user_daily rows=718985 build=65.3ms write=46.3ms
+  t4 user_daily rows=804390 build=63.0ms write=54.5ms
+  t0 user_daily rows=1583396 build=49.3ms write=93.3ms
+[ 3492.90 ms] persons
+[ 3495.11 ms] written
+event lines 64770937 valid-copies 63116505 clicks 15271464 user_daily rows 6628167 P=10 Q=12
+[ 3513.64 ms] released
+RUN ncpu=8 wall 3.58 user 12.53 sys 1.33 maxrss 9598476KB
+rows user_daily 6628167 campaign_daily 28014
+ncpu4 == ncpu8: True True
+sessions equal: True 10014261 10014261
+revenue equal: True
+assisted >= credited non-organic: True
+dup keys: 0 0
