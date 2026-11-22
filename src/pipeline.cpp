@@ -1211,6 +1211,12 @@ struct alignas(64) Strm {
 #ifndef PFW
 #define PFW 64
 #endif
+#if !defined(NOPACKSC) && !defined(PACKSC)
+#define PACKSC 1
+#endif
+#ifndef DDPF
+#define DDPF 8
+#endif
 template <class T>
 struct SHot {
   T* wp;      // next write position; block-aligned (or null) means a new block is needed
@@ -1890,7 +1896,7 @@ static void dedup_partition(TCtx& W, u32 q) {
       u32 cnt = st.bcount(b);
       for (u32 k = 0; k < cnt; k++) {
         const ERec& e = r[k];
-#ifdef DDPF
+#if DDPF > 0
         if (k + DDPF < cnt) __builtin_prefetch(&tab[(r[k + DDPF].key >> (64 - lg)) & mask], 1);
 #endif
         u64 i = (e.key >> (64 - lg)) & mask;

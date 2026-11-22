@@ -1,4 +1,3 @@
-packsc -DPACKSC
-ddpf8 -DDDPF=8
-ddpf16 -DDDPF=16
-pack_dd8 -DPACKSC -DDDPF=8
+oldroot -DOLDROOT
+nopack -DNOPACKSC
+noddpf -DDDPF=0
