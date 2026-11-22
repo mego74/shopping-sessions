@@ -404,6 +404,24 @@ static const u32 FLAT_W = FLATW;  // window bytes
 #ifndef CUNROLL
 #define CUNROLL 6
 #endif
+#ifndef INPF
+#define INPF 0
+#endif
+#ifndef POPRD
+#define POPRD 0
+#endif
+#ifndef MADV_POPULATE_READ
+#define MADV_POPULATE_READ 22
+#endif
+// Map the page-table entries of [s, e) of a file in one call instead of one fault per 16 pages.
+static inline void populate(const MFile& f, u64 s, u64 e) {
+#if POPRD && defined(__linux__)
+  const uintptr_t a = (uintptr_t)(f.p + s) & ~(uintptr_t)4095, b = (uintptr_t)(f.p + std::min(f.n, e + 4096));
+  if (b > a) madvise((void*)a, b - a, MADV_POPULATE_READ);
+#else
+  (void)f; (void)s; (void)e;
+#endif
+}
 #ifndef NUNROLL
 #define NUNROLL 1
 #endif
@@ -463,6 +481,9 @@ static AI void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line) {
     for (u64 b = wb; b < we; b += 64) {
       u64 ncm, nnm, nqm;
       block_masks3(base + b + 64, ncm, nnm, nqm);  // lookahead (padding keeps this in bounds)
+#if INPF > 0
+      __builtin_prefetch(base + b + INPF);  // hardware prefetch stops at page boundaries
+#endif
       const u64 qa = (qm >> 1) | (nqm << 63);
       const u64 qb = (qm << 1) | qprev;
       const u32 off = (u32)(b - wb);
@@ -2581,6 +2602,7 @@ int main(int argc, char** argv) {
         size_t i = next.fetch_add(1);
         if (i >= jobs.size()) break;
         const Job& j = jobs[i];
+        populate(j.kind == 0 ? evf[j.c.file] : ckf[j.c.file], j.c.s, j.c.e);
         if (j.kind == 0)
           events_chunk(W, evf[j.c.file], j.c.s, j.c.e);
         else
