@@ -1430,8 +1430,13 @@ static inline u32 id_insert(u64 h, u64 ptr, DenseAlloc& da) {
 static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
   std::vector<Chunk> ch = make_chunks(lf, 1 << 20);
   std::atomic<size_t> next{0};
+  u64 lbytes = 0;
+  for (auto& f : lf) lbytes += f.n;
   par_run([&](int t) {
     TCtx& W = TC[t];
+#ifndef NOCRES
+    W.lrecs.reserve(lbytes / 20 / (u64)NT * 5 / 4 + 1024);
+#endif
     for (;;) {
       size_t ci = next.fetch_add(1);
       if (ci >= ch.size()) break;
