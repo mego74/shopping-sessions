@@ -184,7 +184,7 @@ static AI u64 hstr(const char* p, u32 n) {
     a = loadp(p, n);
     b = 0;
   }
-  u64 h = fmix(mum(a ^ 0x589965cc75374cc3ULL, b ^ seed ^ 0x1d8e4e27c47d124fULL));
+  u64 h = mum(a ^ 0x589965cc75374cc3ULL, b ^ seed ^ 0x1d8e4e27c47d124fULL);
   return h ? h : 1;
 }
 static AI u32 crcstr(const char* p, u32 n) {
@@ -380,13 +380,37 @@ static inline u32 ctz_any(u64 x) { return x ? (u32)__builtin_ctzll(x) : 0; }
 static const u32 FLAT_W = 16384;  // window bytes
 struct Flat {
   u32 com[FLAT_W + 64];
-  u32 nl[FLAT_W + 64];
-  u32 nlq[FLAT_W + 64];
+  u32 nl[FLAT_W + 64];   // position | quote-after << 30 | quote-before << 31
+  u32 nlq[FLAT_W + 64];  // quotes in the window before this newline
+  u64 cqa[FLAT_W / 64 + 4];  // bit k: comma k is followed by a quote
+  u64 cqb[FLAT_W / 64 + 4];  // bit k: comma k is preceded by a quote
 };
+
+static AI u64 pext64(u64 v, u64 m) {
+#if defined(__BMI2__)
+  return _pext_u64(v, m);
+#else
+  u64 r = 0;
+  for (u32 k = 0; m; k++, m &= m - 1)
+    if (v & m & (0 - m)) r |= 1ULL << k;
+  return r;
+#endif
+}
+static AI void bits_append(u64* arr, u32 pos, u64 v) {  // v holds <= 64 bits; bits above pos are zero
+  const u32 w = pos >> 6, sh = pos & 63;
+  arr[w] |= v << sh;
+  arr[w + 1] = sh ? v >> (64 - sh) : 0;
+}
+static AI u64 bits_get(const u64* arr, u32 pos) {
+  const u32 w = pos >> 6, sh = pos & 63;
+  return sh ? (arr[w] >> sh) | (arr[w + 1] << (64 - sh)) : arr[w];
+}
 
 static inline u64 align_start(const MFile& f, u64 s);
 
 // Calls on_line(Fld*) for every well-formed NF-field line starting in [s, e) of file f.
+// Quote rules come from bit masks: a field is quoted iff a quote follows its opening separator;
+// it must then end with a quote and be >= 2 long, and the line's quote count must be 2 x quoted fields.
 template <int NF, class F>
 static inline void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line) {
   u64 ls = align_start(f, s);
@@ -397,27 +421,36 @@ static inline void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line
     const u64 wb = ls & ~(u64)63;
     const u64 we = std::min(lim, wb + FLAT_W);
     u32 nc = 0, nn = 0, cq = 0;
+    u64 cm, nm, qm;
+    block_masks3(base + wb, cm, nm, qm);
+    {
+      const u64 keep = ~0ULL << (ls - wb);
+      cm &= keep;
+      nm &= keep;
+      qm &= keep;
+    }
+    u64 qprev = 0;
+    FL.cqa[0] = FL.cqb[0] = 0;
     for (u64 b = wb; b < we; b += 64) {
-      u64 cm, nm, qm;
-      block_masks3(base + b, cm, nm, qm);
-      if (b == wb) {
-        const u64 keep = ~0ULL << (ls - wb);
-        cm &= keep;
-        nm &= keep;
-        qm &= keep;
-      }
+      u64 ncm, nnm, nqm;
+      block_masks3(base + b + 64, ncm, nnm, nqm);  // lookahead (padding keeps this in bounds)
+      const u64 qa = (qm >> 1) | (nqm << 63);
+      const u64 qb = (qm << 1) | qprev;
       const u32 off = (u32)(b - wb);
       {
         const u32 cnt = (u32)__builtin_popcountll(cm);
+        bits_append(FL.cqa, nc, pext64(qa, cm));
+        bits_append(FL.cqb, nc, pext64(qb, cm));
         u32* o = FL.com + nc;
+        u64 t = cm;
         for (int i = 0; i < 8; i++) {
-          o[i] = off + ctz_any(cm);
-          cm &= cm - 1;
+          o[i] = off + ctz_any(t);
+          t &= t - 1;
         }
         if (UNLIKELY(cnt > 8)) {
           for (u32 i = 8; i < cnt; i++) {
-            o[i] = off + ctz_any(cm);
-            cm &= cm - 1;
+            o[i] = off + ctz_any(t);
+            t &= t - 1;
           }
         }
         nc += cnt;
@@ -429,14 +462,14 @@ static inline void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line
         u64 t = nm;
         for (int i = 0; i < 2; i++) {
           u32 bit = t ? (u32)__builtin_ctzll(t) : 0;
-          o[i] = off + bit;
+          o[i] = (off + bit) | (u32)(((qa >> bit) & 1) << 30) | (u32)(((qb >> bit) & 1) << 31);
           oq[i] = cq + (u32)__builtin_popcountll(qm & ((1ULL << bit) - 1));
           t &= t - 1;
         }
         if (UNLIKELY(cnt > 2)) {
           for (u32 i = 2; i < cnt; i++) {
             u32 bit = (u32)__builtin_ctzll(t);
-            o[i] = off + bit;
+            o[i] = (off + bit) | (u32)(((qa >> bit) & 1) << 30) | (u32)(((qb >> bit) & 1) << 31);
             oq[i] = cq + (u32)__builtin_popcountll(qm & ((1ULL << bit) - 1));
             t &= t - 1;
           }
@@ -444,6 +477,10 @@ static inline void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line
         nn += cnt;
       }
       cq += (u32)__builtin_popcountll(qm);
+      qprev = qm >> 63;
+      cm = ncm;
+      nm = nnm;
+      qm = nqm;
     }
     if (UNLIKELY(nn == 0)) {
       // a line longer than the window: fall back to the incremental scanner for it
@@ -454,31 +491,36 @@ static inline void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line
       ls = nx;
       continue;
     }
+    const char* q = base + wb;
     u32 ci = 0, prevq = 0;
+    u32 lsq = base[ls] == '"';  // first field of the first line starts with a quote?
     for (u32 j = 0; j < nn; j++) {
-      const u32 le = FL.nl[j];
+      const u32 nlw = FL.nl[j];
+      const u32 le = nlw & 0x3FFFFFFFu;
       const u32 qn = FL.nlq[j] - prevq;
       prevq = FL.nlq[j];
       const bool cnt_ok = (ci + NF - 2 < nc) && (FL.com[ci + NF - 2] < le) && (ci + NF - 1 >= nc || FL.com[ci + NF - 1] > le);
       if (LIKELY(cnt_ok)) {
+        const u32 fmask = (1u << NF) - 1;
+        const u32 isqm = (u32)((bits_get(FL.cqa, ci) << 1) | lsq) & fmask;
+        const u32 endm = ((u32)bits_get(FL.cqb, ci) & ((1u << (NF - 1)) - 1)) | ((nlw >> 31) << (NF - 1));
+        u32 bad = isqm & ~endm;
         u32 fs = (u32)(ls - wb);
-        u32 expq = 0, bad = 0;
         for (int i = 0; i < NF; i++) {
           const u32 fe = i < NF - 1 ? FL.com[ci + i] : le;
-          const char* q = base + wb;
           const u32 len = fe - fs;
-          const u32 isq = q[fs] == '"';
-          bad |= isq & ((len < 2) | (q[fe - (len != 0)] != '"'));  // len==0 -> isq==0; never index before fs
+          const u32 isq = (isqm >> i) & 1;
+          bad |= isq & (len < 2);
           fl[i].p = q + fs + isq;
           fl[i].n = len - 2 * isq;
-          expq += 2 * isq;
           fs = fe + 1;
         }
         ci += NF - 1;
-        if (!bad && qn == expq) on_line(fl);
+        if (!bad && qn == 2 * (u32)__builtin_popcount(isqm)) on_line(fl);
       } else {
         while (ci < nc && FL.com[ci] < le) ci++;
       }
+      lsq = (nlw >> 30) & 1;
       ls = wb + le + 1;
       if (ls >= e) return;
     }
@@ -851,7 +893,7 @@ struct TCtx {
   PRec* pswc = nullptr;  // per person-partition 64-byte line buffers
   ERec* eswc = nullptr;  // per event-id-partition line buffers
   std::vector<Strm<NRec>> ns;
-  u64* ncache = (u64*)calloc(8192, sizeof(u64));
+  u64* ncache = (u64*)calloc(4096, sizeof(u64));
   Arena<ERec> ea;
   Arena<CRec> ca;
   std::vector<Strm<PRec>> ps;
@@ -1093,7 +1135,7 @@ static inline void flushE(TCtx& W, PendE* pe, int n) {
     lookup_person(pe[i].huid, pk, linked);
     u32 p = (u32)(pk >> (64 - PBITS));
     if (!linked) {
-      u64& c = W.ncache[(pk >> 20) & 8191];
+      u64& c = W.ncache[(pk >> 20) & 4095];
       if (c != pk) {
         c = pk;
         W.ns[p].push({pk, pe[i].np}, W.na);
