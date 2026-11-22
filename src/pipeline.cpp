@@ -44,7 +44,8 @@ static const u32 GAP = 1800000u;
 static const u32 WEEK = 604800000u;
 
 #if defined(__linux__)
-extern "C" void __gcov_dump(void) __attribute__((weak));  // present only in profile-instrumented builds
+extern "C" void __gcov_dump(void) __attribute__((weak));
+extern "C" int __llvm_profile_write_file(void) __attribute__((weak));  // present only in profile-instrumented builds
 #endif
 static double T0;
 static double nowd() {
@@ -3273,6 +3274,7 @@ int main(int argc, char** argv) {
   fflush(stderr);
 #if defined(__linux__)
   if (__gcov_dump) __gcov_dump();  // _exit skips the normal profile write-out
+  if (__llvm_profile_write_file) __llvm_profile_write_file();
 #endif
   _exit(0);
 }
