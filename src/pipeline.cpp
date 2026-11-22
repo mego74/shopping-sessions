@@ -2913,6 +2913,9 @@ int main(int argc, char** argv) {
     std::atomic<size_t> next{0};
     par_run([&](int t) {
       TCtx& W = TC[t];
+#ifndef NOCRES
+      W.cidp.reserve(ckbytes / 40 / (u64)NT * 5 / 4 + 1024);  // valid clicks of a thread, with headroom
+#endif
       for (;;) {
         size_t i = next.fetch_add(1);
         if (i >= jobs.size()) break;
