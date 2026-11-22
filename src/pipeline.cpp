@@ -899,10 +899,9 @@ struct ERec {
 };
 struct CRec {
   u32 pid;
-  u32 ts;  // ms since click window start
+  u32 ts;    // ms since click window start
   u32 camp;
-  u32 pad;
-  u64 idp;
+  u32 cref;  // thread << 28 | index into that thread's click-id table (only for same-ms tie-breaks)
 };
 struct LRec {
   u64 a, b, pa, pb;
@@ -924,7 +923,11 @@ struct Arena {
     u32 b = nblocks++;
     u32 c = b / CHB;
     if (c >= 2048) die("arena overflow");
-    if (!chunks[c]) chunks[c] = (T*)big_alloc(sizeof(T) * (size_t)BLK * CHB);
+    if (!chunks[c]) {
+      const size_t bytes = sizeof(T) * (size_t)BLK * CHB, al = sizeof(T) * (size_t)BLK;
+      char* raw = (char*)big_alloc(bytes + al);
+      chunks[c] = (T*)(((uintptr_t)raw + al - 1) & ~(uintptr_t)(al - 1));
+    }
     return b;
   }
   inline T* blk(u32 b) const { return chunks[b / CHB] + (size_t)(b % CHB) * BLK; }
@@ -1003,12 +1006,14 @@ struct alignas(64) Strm {
 // stream is a 16-byte record in one contiguous array, so scattering touches little cache.
 template <class T>
 struct SHot {
-  T* wp;
-  u32 idx;   // arena index of the next record
-  u32 left;  // free slots in the current block
+  T* wp;      // next write position; block-aligned (or null) means a new block is needed
+  u32 ibase;  // arena index of the current block's first record
+  u32 pad;
 };
 template <class T>
 struct StreamSet {
+  static_assert((BLK * sizeof(T) & (BLK * sizeof(T) - 1)) == 0, "block bytes must be a power of two");
+  static constexpr uintptr_t BB = BLK * sizeof(T);
   std::vector<SHot<T>> hot;
   std::vector<std::vector<u32>> blks;
   void resize(size_t n) {
@@ -1017,24 +1022,28 @@ struct StreamSet {
   }
   AI u32 push(u32 s, const T& v, Arena<T>& a) {
     SHot<T>& h = hot[s];
-    if (UNLIKELY(h.left == 0)) {
+    T* w = h.wp;
+    if (UNLIKELY(((uintptr_t)w & (BB - 1)) == 0)) {
       const u32 b = a.alloc(s, (u32)blks[s].size());
       blks[s].push_back(b);
-      h.wp = a.blk(b);
-      h.idx = b * BLK;
-      h.left = BLK;
+      w = a.blk(b);
+      h.ibase = b * BLK;
     }
-    h.left--;
-    *h.wp++ = v;
-    return h.idx++;
+    *w = v;
+    h.wp = w + 1;
+    return h.ibase + (u32)(((uintptr_t)w & (BB - 1)) / sizeof(T));
+  }
+  static u32 fill_of(const T* wp) {  // records in the last block
+    const u32 f = (u32)(((uintptr_t)wp & (BB - 1)) / sizeof(T));
+    return f ? f : BLK;
   }
   struct View {
     const std::vector<u32>& blocks;
-    u32 left;
-    u32 bcount(size_t i) const { return i + 1 == blocks.size() ? BLK - left : BLK; }
-    size_t count() const { return blocks.empty() ? 0 : (blocks.size() - 1) * (size_t)BLK + (BLK - left); }
+    u32 lastn;
+    u32 bcount(size_t i) const { return i + 1 == blocks.size() ? lastn : BLK; }
+    size_t count() const { return blocks.empty() ? 0 : (blocks.size() - 1) * (size_t)BLK + lastn; }
   };
-  View view(u32 s) const { return View{blks[s], hot[s].left}; }
+  View view(u32 s) const { return View{blks[s], blks[s].empty() ? 0u : fill_of(hot[s].wp)}; }
   size_t count(u32 s) const { return view(s).count(); }
 };
 
@@ -1068,6 +1077,7 @@ struct TCtx {
   StreamSet<ERec> es;
   StreamSet<CRec> cs;
   std::vector<LRec> lrecs;
+  std::vector<u64> cidp;  // click_id pointers of this thread's valid clicks
   // counters
   u64 n_ev_lines = 0, n_ev_valid = 0, n_ck_valid = 0;
   // dedup scratch
@@ -1450,7 +1460,9 @@ static inline void flushE(TCtx& W, PendE* pe, int n) {
 static inline void flushC(TCtx& W, PendC* pc, int n) {
   for (int i = 0; i < n; i++) {
     const u32 pid = person_of(W, pc[i].huid, pc[i].unp);
-    W.cs.push(pid & PMASK, {pid, pc[i].ts, pc[i].camp, 0, pc[i].idp}, W.ca);
+    const u32 cref = ((u32)W.id << 28) | (u32)W.cidp.size();
+    W.cidp.push_back(pc[i].idp);
+    W.cs.push(pid & PMASK, {pid, pc[i].ts, pc[i].camp, cref}, W.ca);
   }
 }
 
@@ -1815,10 +1827,11 @@ static void process_person(TCtx& W, u64 nameref, const u32* ev, u32 n, const CK*
         u32 k = j - 1;
         c = (u32)(ck[k].key & 0xFFFF);
         if (k > 0 && (u32)(ck[k - 1].key >> 32) == t) {
-          u64 best = ck[k].idp;
+          auto cid = [](u64 cref) { return TC[cref >> 28].cidp[cref & 0x0FFFFFFF]; };
+          u64 best = cid(ck[k].idp);
           for (u32 r = k; r-- > 0 && (u32)(ck[r].key >> 32) == t;) {
-            if (cmpstr(ck[r].idp, best) < 0) {
-              best = ck[r].idp;
+            if (cmpstr(cid(ck[r].idp), best) < 0) {
+              best = cid(ck[r].idp);
               c = (u32)(ck[r].key & 0xFFFF);
             }
           }
@@ -1966,7 +1979,7 @@ static void person_partition(TCtx& W, u32 p) {
         if (!L[lp].n) continue;
         L[lp].ccnt++;
         clp[kc] = lp;
-        ckt[kc] = {((u64)r[i].ts << 32) | r[i].camp, r[i].idp};
+        ckt[kc] = {((u64)r[i].ts << 32) | r[i].camp, r[i].cref};
         kc++;
       }
     }
@@ -2377,7 +2390,7 @@ int main(int argc, char** argv) {
   }
   NT = getenv("NCPU") ? atoi(getenv("NCPU")) : (int)std::thread::hardware_concurrency();
   if (NT < 1) NT = 1;
-  if (NT > 64) NT = 64;
+  if (NT > 16) NT = 16;
   {
     int tb = 1;
     while ((1 << tb) < NT) tb++;
