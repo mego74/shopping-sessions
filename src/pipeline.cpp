@@ -214,59 +214,77 @@ static inline int cmpstr(u64 a, u64 b) {
 }
 
 // ---------------------------------------------------------------- CSV scanning
-static inline u64 struct_mask(const char* p) {  // p is 64-byte aligned
-#ifdef __AVX2__
+// sep = ',' or '\n' positions, quo = '"' positions, for 64 bytes at p (64-byte aligned)
+static inline void block_masks(const char* p, u64& sep, u64& quo) {
+#if defined(__AVX2__)
   __m256i a = _mm256_load_si256((const __m256i*)p);
   __m256i b = _mm256_load_si256((const __m256i*)(p + 32));
   const __m256i C = _mm256_set1_epi8(','), N = _mm256_set1_epi8('\n'), Q = _mm256_set1_epi8('"');
-  __m256i ma = _mm256_or_si256(_mm256_or_si256(_mm256_cmpeq_epi8(a, C), _mm256_cmpeq_epi8(a, N)),
-                               _mm256_cmpeq_epi8(a, Q));
-  __m256i mb = _mm256_or_si256(_mm256_or_si256(_mm256_cmpeq_epi8(b, C), _mm256_cmpeq_epi8(b, N)),
-                               _mm256_cmpeq_epi8(b, Q));
-  return (u64)(u32)_mm256_movemask_epi8(ma) | ((u64)(u32)_mm256_movemask_epi8(mb) << 32);
+  u64 sa = (u32)_mm256_movemask_epi8(_mm256_or_si256(_mm256_cmpeq_epi8(a, C), _mm256_cmpeq_epi8(a, N)));
+  u64 sb = (u32)_mm256_movemask_epi8(_mm256_or_si256(_mm256_cmpeq_epi8(b, C), _mm256_cmpeq_epi8(b, N)));
+  u64 qa = (u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(a, Q));
+  u64 qb = (u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(b, Q));
+  sep = sa | (sb << 32);
+  quo = qa | (qb << 32);
 #elif defined(__aarch64__)
   const uint8x16_t C = vdupq_n_u8(','), N = vdupq_n_u8('\n'), Q = vdupq_n_u8('"');
   static const uint8_t bm[16] = {1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128};
   const uint8x16_t B = vld1q_u8(bm);
-  uint8x16_t t[4];
+  uint8x16_t ts[4], tq[4];
   for (int i = 0; i < 4; i++) {
     uint8x16_t a = vld1q_u8((const uint8_t*)p + 16 * i);
-    uint8x16_t m = vorrq_u8(vorrq_u8(vceqq_u8(a, C), vceqq_u8(a, N)), vceqq_u8(a, Q));
-    t[i] = vandq_u8(m, B);
+    ts[i] = vandq_u8(vorrq_u8(vceqq_u8(a, C), vceqq_u8(a, N)), B);
+    tq[i] = vandq_u8(vceqq_u8(a, Q), B);
   }
-  uint8x16_t s0 = vpaddq_u8(t[0], t[1]), s1 = vpaddq_u8(t[2], t[3]);
+  uint8x16_t s0 = vpaddq_u8(ts[0], ts[1]), s1 = vpaddq_u8(ts[2], ts[3]);
+  uint8x16_t q0 = vpaddq_u8(tq[0], tq[1]), q1 = vpaddq_u8(tq[2], tq[3]);
   s0 = vpaddq_u8(s0, s1);
-  s0 = vpaddq_u8(s0, s0);
-  return vgetq_lane_u64(vreinterpretq_u64_u8(s0), 0);
+  q0 = vpaddq_u8(q0, q1);
+  uint8x16_t r = vpaddq_u8(s0, q0);
+  sep = vgetq_lane_u64(vreinterpretq_u64_u8(r), 0);
+  quo = vgetq_lane_u64(vreinterpretq_u64_u8(r), 1);
 #else
   const __m128i C = _mm_set1_epi8(','), N = _mm_set1_epi8('\n'), Q = _mm_set1_epi8('"');
-  u64 r = 0;
+  sep = 0;
+  quo = 0;
   for (int i = 0; i < 4; i++) {
     __m128i a = _mm_load_si128((const __m128i*)(p + 16 * i));
-    __m128i m = _mm_or_si128(_mm_or_si128(_mm_cmpeq_epi8(a, C), _mm_cmpeq_epi8(a, N)), _mm_cmpeq_epi8(a, Q));
-    r |= (u64)(u32)_mm_movemask_epi8(m) << (16 * i);
+    sep |= (u64)(u32)_mm_movemask_epi8(_mm_or_si128(_mm_cmpeq_epi8(a, C), _mm_cmpeq_epi8(a, N))) << (16 * i);
+    quo |= (u64)(u32)_mm_movemask_epi8(_mm_cmpeq_epi8(a, Q)) << (16 * i);
   }
-  return r;
 #endif
 }
 
 struct Scanner {
   const char* base;
-  u64 blk;
-  u64 m;
+  u64 blk;   // current block offset
+  u64 sm;    // remaining separator bits of current block
+  u64 qm;    // all quote bits of current block
+  u64 cumq;  // quotes in blocks before the current one
   inline void init(const char* b, u64 pos) {
     base = b;
     blk = pos & ~(u64)63;
-    m = struct_mask(base + blk) & (~0ULL << (pos & 63));
+    u64 s, q;
+    block_masks(base + blk, s, q);
+    sm = s & (~0ULL << (pos & 63));
+    qm = q;
+    cumq = 0;
   }
   inline u64 next() {
-    while (m == 0) {
+    while (UNLIKELY(sm == 0)) {
+      cumq += (u64)__builtin_popcountll(qm);
       blk += 64;
-      m = struct_mask(base + blk);
+      block_masks(base + blk, sm, qm);
     }
-    u64 p = blk + (u64)__builtin_ctzll(m);
-    m &= m - 1;
+    u64 p = blk + (u64)__builtin_ctzll(sm);
+    sm &= sm - 1;
     return p;
+  }
+  // number of quotes strictly before pos; pos must be < blk + 128 and >= blk
+  inline u64 qbefore(u64 pos) const {
+    u64 k = pos - blk;
+    u64 m = k >= 64 ? ~0ULL : ((1ULL << k) - 1);
+    return cumq + (u64)__builtin_popcountll(qm & m);
   }
 };
 
@@ -276,59 +294,38 @@ struct Fld {
 };
 
 // Parses one line starting at ls. Returns true iff well-formed with exactly NF fields.
+// Fields split on every ','; a field is quoted iff its first byte is '"', then its last byte must be
+// '"' too (length >= 2), and the line's quote count must equal 2 x (number of quoted fields).
 template <int NF>
 static inline bool parse_line(Scanner& sc, const char* base, Fld* f, u64 ls, u64& next_ls) {
-  int nf = 0;
+  const u64 q0 = sc.qbefore(ls);
   u64 fs = ls;
-  for (;;) {
+  u32 expq = 0;
+  u32 bad = 0;
+  for (int i = 0;; i++) {
     u64 p = sc.next();
     char c = base[p];
-    u64 vs, ve;
-    if (UNLIKELY(c == '"')) {
-      if (p != fs) goto malformed;
-      u64 q = sc.next();
-      char cq = base[q];
-      if (cq != '"') {
-        if (cq == '\n') {
-          next_ls = q + 1;
-          return false;
-        }
-        goto malformed;
+    if (i < NF - 1) {
+      if (UNLIKELY(c == '\n')) {
+        next_ls = p + 1;
+        return false;
       }
-      u64 r = sc.next();
-      char cr = base[r];
-      if (r != q + 1 || cr == '"') {
-        if (cr == '\n') {
-          next_ls = r + 1;
-          return false;
-        }
-        goto malformed;
-      }
-      vs = p + 1;
-      ve = q;
-      p = r;
-      c = cr;
-    } else {
-      vs = fs;
-      ve = p;
-    }
-    if (nf < NF) {
-      f[nf].p = base + vs;
-      f[nf].n = (u32)(ve - vs);
-    }
-    nf++;
-    if (c == '\n') {
-      next_ls = p + 1;
-      return nf == NF;
-    }
-    fs = p + 1;
-  }
-malformed:
-  for (;;) {
-    u64 p = sc.next();
-    if (base[p] == '\n') {
+    } else if (UNLIKELY(c != '\n')) {
+      do p = sc.next();
+      while (base[p] != '\n');
       next_ls = p + 1;
       return false;
+    }
+    u32 len = (u32)(p - fs);
+    u32 isq = base[fs] == '"';
+    bad |= isq & ((len < 2) | (base[p - 1] != '"'));
+    f[i].p = base + fs + isq;
+    f[i].n = len - 2 * isq;
+    expq += 2 * isq;
+    fs = p + 1;
+    if (i == NF - 1) {
+      next_ls = p + 1;
+      return !bad && (sc.qbefore(p) - q0) == expq;
     }
   }
 }
@@ -355,44 +352,97 @@ static inline i64 days_from_civil(i64 y, unsigned m, unsigned d) {
   return era * 146097 + (i64)doe - 719468;
 }
 
+// month-start day numbers for years [YBASE, YBASE+YSPAN): days since epoch, and days in month
+static const int YBASE = 1900, YSPAN = 400;
+static i32 MSTART[YSPAN * 13];
+static u8 MDIM[YSPAN * 13];
+static void init_cal() {
+  for (int y = 0; y < YSPAN; y++)
+    for (int m = 1; m <= 12; m++) {
+      int yy = YBASE + y;
+      MSTART[y * 13 + m] = (i32)days_from_civil(yy, (unsigned)m, 1);
+      MDIM[y * 13 + m] = (u8)(DIM[m] + (m == 2 && is_leap(yy)));
+    }
+}
+
+// "YYYY-MM-DDTHH:MM:SS" at s -> seconds since epoch (validated). Reads s[0..24).
+static inline bool dt19(const char* s, i64& secs) {
+  const u64 a = load64(s), b = load64(s + 8), c = load64(s + 16);
+  const u64 SA = 0xFF0000FF00000000ULL, VA = ((u64)'-' << 32) | ((u64)'-' << 56);
+  const u64 SB = 0x0000FF0000FF0000ULL, VB = ((u64)'T' << 16) | ((u64)':' << 40);
+  if (((a & SA) ^ VA) | ((b & SB) ^ VB) | ((c & 0xFF) ^ (u64)':')) return false;
+  const u64 Z = 0x3030303030303030ULL, SIX = 0x0606060606060606ULL, HI = 0xF0F0F0F0F0F0F0F0ULL;
+  const u64 DA = 0x00FFFF00FFFFFFFFULL, DB = 0xFFFF00FFFF00FFFFULL, DC = 0x0000000000FFFF00ULL;
+  const u64 ta = (a ^ Z) & DA, tb = (b ^ Z) & DB, tc = (c ^ Z) & DC;
+  if (((ta | (ta + SIX)) & HI & DA) | ((tb | (tb + SIX)) & HI & DB) | ((tc | (tc + SIX)) & HI & DC)) return false;
+  const unsigned y = (unsigned)((ta & 0xFF) * 1000 + ((ta >> 8) & 0xFF) * 100 + ((ta >> 16) & 0xFF) * 10 + ((ta >> 24) & 0xFF));
+  const unsigned mo = (unsigned)(((ta >> 40) & 0xFF) * 10 + ((ta >> 48) & 0xFF));
+  const unsigned dd = (unsigned)((tb & 0xFF) * 10 + ((tb >> 8) & 0xFF));
+  const unsigned hh = (unsigned)(((tb >> 24) & 0xFF) * 10 + ((tb >> 32) & 0xFF));
+  const unsigned mi = (unsigned)(((tb >> 48) & 0xFF) * 10 + (tb >> 56));
+  const unsigned ss = (unsigned)(((tc >> 8) & 0xFF) * 10 + ((tc >> 16) & 0xFF));
+  if ((mo - 1u > 11u) | (dd == 0) | (hh > 23) | (mi > 59) | (ss > 59)) return false;
+  i64 days;
+  unsigned yi = y - (unsigned)YBASE;
+  if (LIKELY(yi < (unsigned)YSPAN)) {
+    if (dd > MDIM[yi * 13 + mo]) return false;
+    days = MSTART[yi * 13 + mo] + (i64)dd - 1;
+  } else {
+    unsigned dim = (unsigned)DIM[mo] + (mo == 2 && is_leap((int)y));
+    if (dd > dim) return false;
+    days = days_from_civil((i64)y, mo, dd);
+  }
+  secs = days * 86400 + (i64)(hh * 3600 + mi * 60 + ss);
+  return true;
+}
+
 // F1 (n==20) or F2 (n==25). Returns ms.
 static inline bool parse_f12(const char* s, u32 n, i64& ms) {
-  const unsigned char* u = (const unsigned char*)s;
-  if (n != 20 && n != 25) return false;
-  if (u[4] != '-' || u[7] != '-' || u[10] != 'T' || u[13] != ':' || u[16] != ':') return false;
-  unsigned d0 = u[0] - 48u, d1 = u[1] - 48u, d2 = u[2] - 48u, d3 = u[3] - 48u;
-  unsigned d5 = u[5] - 48u, d6 = u[6] - 48u, d8 = u[8] - 48u, d9 = u[9] - 48u;
-  unsigned d11 = u[11] - 48u, d12 = u[12] - 48u, d14 = u[14] - 48u, d15 = u[15] - 48u;
-  unsigned d17 = u[17] - 48u, d18 = u[18] - 48u;
-  if ((d0 > 9) | (d1 > 9) | (d2 > 9) | (d3 > 9) | (d5 > 9) | (d6 > 9) | (d8 > 9) | (d9 > 9) | (d11 > 9) |
-      (d12 > 9) | (d14 > 9) | (d15 > 9) | (d17 > 9) | (d18 > 9))
-    return false;
-  int y = (int)(d0 * 1000 + d1 * 100 + d2 * 10 + d3);
-  unsigned mo = d5 * 10 + d6, dd = d8 * 10 + d9, hh = d11 * 10 + d12, mi = d14 * 10 + d15, ss = d17 * 10 + d18;
-  if (mo < 1 || mo > 12 || dd < 1 || hh > 23 || mi > 59 || ss > 59) return false;
-  unsigned dim = (unsigned)DIM[mo] + (mo == 2 && is_leap(y));
-  if (dd > dim) return false;
-  i64 off = 0;
+  i64 secs;
   if (n == 20) {
-    if (u[19] != 'Z') return false;
-  } else {
-    unsigned char sg = u[19];
-    if ((sg != '+' && sg != '-') || u[22] != ':') return false;
-    unsigned a = u[20] - 48u, b = u[21] - 48u, c = u[23] - 48u, e = u[24] - 48u;
-    if ((a > 9) | (b > 9) | (c > 9) | (e > 9)) return false;
-    unsigned oh = a * 10 + b, om = c * 10 + e;
-    if (oh > 23 || om > 59) return false;
-    off = (i64)(oh * 3600 + om * 60);
-    if (sg == '-') off = -off;
+    if (s[19] != 'Z' || !dt19(s, secs)) return false;
+    ms = secs * 1000;
+    return true;
   }
-  i64 days = days_from_civil(y, mo, dd);
-  ms = (days * 86400 + (i64)(hh * 3600 + mi * 60 + ss) - off) * 1000;
+  if (n != 25) return false;
+  const unsigned char* u = (const unsigned char*)s;
+  unsigned char sg = u[19];
+  if ((sg != '+' && sg != '-') || u[22] != ':') return false;
+  unsigned a = u[20] - 48u, b = u[21] - 48u, c = u[23] - 48u, e = u[24] - 48u;
+  if ((a > 9) | (b > 9) | (c > 9) | (e > 9)) return false;
+  unsigned oh = a * 10 + b, om = c * 10 + e;
+  if (oh > 23 || om > 59) return false;
+  if (!dt19(s, secs)) return false;
+  i64 off = (i64)(oh * 3600 + om * 60);
+  if (sg == '-') off = -off;
+  ms = (secs - off) * 1000;
   return true;
+}
+
+static inline bool all_digits8(u64 v) {
+  const u64 t = v ^ 0x3030303030303030ULL;
+  return ((t | (t + 0x0606060606060606ULL)) & 0xF0F0F0F0F0F0F0F0ULL) == 0;
+}
+static inline u64 swar8(u64 v) {  // 8 ASCII digits (validated), first char in lowest byte
+  v -= 0x3030303030303030ULL;
+  v = (v * 10) + (v >> 8);
+  v = (((v & 0x000000FF000000FFULL) * (100 + (1000000ULL << 32))) +
+       (((v >> 16) & 0x000000FF000000FFULL) * (1 + (10000ULL << 32)))) >>
+      32;
+  return v;
 }
 
 static inline bool parse_ts(const char* s, u32 n, i64& ms) {
   if (n == 0) return false;
   if (n >= 5 && s[4] == '-') return parse_f12(s, n, ms);
+  if (LIKELY(n == 13)) {
+    u64 a = load64(s), b = load64(s + 5);  // bytes 0..7 and 5..12
+    if (all_digits8(a) & all_digits8(b)) {
+      ms = (i64)(swar8(a) * 100000 + (swar8(b) % 100000));
+      return true;
+    }
+    return false;
+  }
   u32 i = 0;
   while (i < n && s[i] == '0') i++;
   u64 v = 0;
@@ -813,8 +863,14 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
     ls = nx;
     if (!ok || fl[0].n == 0) continue;
     W.n_ev_lines++;
+#if STAGE == 1
+    W.n_ev_valid += fl[2].n + fl[1].n; continue;
+#endif
     u64 h1 = hstr(fl[0].p, fl[0].n);
     u32 crc = crcstr(fl[0].p, fl[0].n);
+#if STAGE == 2
+    W.n_ev_valid += h1 + crc + hstr(fl[1].p, fl[1].n); continue;
+#endif
     u32 q = (u32)(h1 >> (64 - QBITS));
     u64 ekey = (h1 << QBITS) | (crc & qmask);
     if (ekey == 0) ekey = 1;
@@ -843,6 +899,9 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
         valid = false;
     }
     if (valid && (ing == INVALID || (i64)ing * 1000 - ts > DAYMS)) valid = false;
+#if STAGE == 3
+    W.n_ev_valid += valid + h1 + crc + ts + hstr(fl[1].p, fl[1].n); continue;
+#endif
     if (!valid) {
       W.es[q].push({ekey, ing, INVALID}, W.ea);
       continue;
@@ -1615,6 +1674,7 @@ static void load_small_table(const std::string& path, std::vector<std::pair<std:
 
 int main(int argc, char** argv) {
   T0 = nowd();
+  init_cal();
   VERBOSE = getenv("PIPE_VERBOSE") != nullptr;
   std::string DATA = getenv("DATA_DIR") ? getenv("DATA_DIR") : "/data";
   std::string OUTD = getenv("OUTPUT_DIR") ? getenv("OUTPUT_DIR") : "/output";
@@ -1626,7 +1686,7 @@ int main(int argc, char** argv) {
   if (NT < 1) NT = 1;
   if (NT > 64) NT = 64;
   {
-    int tb = 0;
+    int tb = 1;
     while ((1 << tb) < NT) tb++;
     TSHIFT = 32 - tb;
   }
@@ -1733,6 +1793,7 @@ int main(int argc, char** argv) {
     });
   }
   logt("parsed events+clicks");
+  if (getenv("PIPE_STOP_PARSE")) { fprintf(stderr, "x %llu\n", (unsigned long long)TC[0].n_ev_valid); _exit(0); }
 
   {
     std::atomic<u32> next{0};
