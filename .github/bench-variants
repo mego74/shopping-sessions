@@ -1,2 +1,3 @@
-pend32 -DPEND=32
-pend8 -DPEND=8
+q4 -DQDIV=48000.0
+p2 -DPDIV=60000.0
+phalf -DPDIV=15000.0

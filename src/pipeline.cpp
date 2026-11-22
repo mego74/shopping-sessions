@@ -868,6 +868,45 @@ struct alignas(64) Strm {
   inline u32 bcount(size_t i) const { return i + 1 == blocks.size() ? (u32)(wp - bp) : BLK; }
 };
 
+// A set of output streams (one per partition) sharing an arena. The per-push state of every
+// stream is a 16-byte record in one contiguous array, so scattering touches little cache.
+template <class T>
+struct SHot {
+  T* wp;
+  u32 idx;   // arena index of the next record
+  u32 left;  // free slots in the current block
+};
+template <class T>
+struct StreamSet {
+  std::vector<SHot<T>> hot;
+  std::vector<std::vector<u32>> blks;
+  void resize(size_t n) {
+    hot.assign(n, SHot<T>{nullptr, 0, 0});
+    blks.resize(n);
+  }
+  AI u32 push(u32 s, const T& v, Arena<T>& a) {
+    SHot<T>& h = hot[s];
+    if (UNLIKELY(h.left == 0)) {
+      const u32 b = a.alloc(s, (u32)blks[s].size());
+      blks[s].push_back(b);
+      h.wp = a.blk(b);
+      h.idx = b * BLK;
+      h.left = BLK;
+    }
+    h.left--;
+    *h.wp++ = v;
+    return h.idx++;
+  }
+  struct View {
+    const std::vector<u32>& blocks;
+    u32 left;
+    u32 bcount(size_t i) const { return i + 1 == blocks.size() ? BLK - left : BLK; }
+    size_t count() const { return blocks.empty() ? 0 : (blocks.size() - 1) * (size_t)BLK + (BLK - left); }
+  };
+  View view(u32 s) const { return View{blks[s], hot[s].left}; }
+  size_t count(u32 s) const { return view(s).count(); }
+};
+
 struct Pers {
   u64 pk;
   u64 np;
@@ -892,15 +931,13 @@ struct TCtx {
   Flat* flat = new Flat;
   Arena<PRec> pa;
   Arena<NRec> na;
-  PRec* pswc = nullptr;  // per person-partition 64-byte line buffers
-  ERec* eswc = nullptr;  // per event-id-partition line buffers
-  std::vector<Strm<NRec>> ns;
+  StreamSet<NRec> ns;
   u64* ncache = (u64*)calloc(4096, sizeof(u64));
   Arena<ERec> ea;
   Arena<CRec> ca;
-  std::vector<Strm<PRec>> ps;
-  std::vector<Strm<ERec>> es;
-  std::vector<Strm<CRec>> cs;
+  StreamSet<PRec> ps;
+  StreamSet<ERec> es;
+  StreamSet<CRec> cs;
   std::vector<LRec> lrecs;
   // counters
   u64 n_ev_lines = 0, n_ev_valid = 0, n_ck_valid = 0;
@@ -1141,12 +1178,12 @@ static inline void flushE(TCtx& W, PendE* pe, int n) {
       u64& c = W.ncache[(pk >> 20) & 4095];
       if (c != pk) {
         c = pk;
-        W.ns[p].push({pk, pe[i].np}, W.na);
+        W.ns.push(p, {pk, pe[i].np}, W.na);
       }
     }
-    u32 idx = W.ps[p].push_wc({pk, pe[i].packed}, W.pa, W.pswc + 4 * (size_t)p, p);
+    u32 idx = W.ps.push(p, {pk, pe[i].packed}, W.pa);
     if (UNLIKELY(idx >= lim - 1)) die("too many records per thread");
-    W.es[pe[i].q].push_wc({pe[i].ekey, pe[i].ing, tid | idx}, W.ea, W.eswc + 4 * (size_t)pe[i].q);
+    W.es.push(pe[i].q, {pe[i].ekey, pe[i].ing, tid | idx}, W.ea);
   }
 }
 static inline void flushC(TCtx& W, PendC* pc, int n) {
@@ -1155,7 +1192,7 @@ static inline void flushC(TCtx& W, PendC* pc, int n) {
     bool linked;
     lookup_person(pc[i].huid, pk, linked);
     u32 p = (u32)(pk >> (64 - PBITS));
-    W.cs[p].push({pk, pc[i].key, pc[i].idp}, W.ca);
+    W.cs.push(p, {pk, pc[i].key, pc[i].idp}, W.ca);
   }
 }
 
@@ -1209,7 +1246,7 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
     W.n_ev_valid += valid + h1 + crc + ts + hstr(fl[1].p, fl[1].n); return;
 #endif
     if (!valid) {
-      W.es[q].push_wc({ekey, ing, INVALID}, W.ea, W.eswc + 4 * (size_t)q);
+      W.es.push(q, {ekey, ing, INVALID}, W.ea);
       return;
     }
     W.n_ev_valid++;
@@ -1255,7 +1292,7 @@ static void clicks_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
 // ---------------------------------------------------------------- dedup
 static void dedup_partition(TCtx& W, u32 q) {
   size_t n = 0;
-  for (int t = 0; t < NT; t++) n += TC[t].es[q].count();
+  for (int t = 0; t < NT; t++) n += TC[t].es.count(q);
   if (n == 0) return;
   size_t cap = 16;
   while (cap < n * 2) cap <<= 1;
@@ -1271,7 +1308,7 @@ static void dedup_partition(TCtx& W, u32 q) {
     W.kills[TC[t].pa.owner[b]].push_back(((u64)t << 32) | (TC[t].pa.ord[b] * BLK + idx % BLK));
   };
   for (int t = 0; t < NT; t++) {
-    Strm<ERec>& st = TC[t].es[q];
+    auto st = TC[t].es.view(q);
     for (size_t b = 0; b < st.blocks.size(); b++) {
       const ERec* r = TC[t].ea.blk(st.blocks[b]);
       u32 cnt = st.bcount(b);
@@ -1529,8 +1566,8 @@ static void person_partition(TCtx& W, u32 p) {
   double tg0 = nowd();
   size_t nrec = 0, ncl = 0;
   for (int t = 0; t < NT; t++) {
-    nrec += TC[t].ps[p].count();
-    ncl += TC[t].cs[p].count();
+    nrec += TC[t].ps.count(p);
+    ncl += TC[t].cs.count(p);
   }
   if (nrec == 0) return;
   size_t cap = 64;
@@ -1576,7 +1613,7 @@ static void person_partition(TCtx& W, u32 p) {
   // dead (deduplicated-away) records: bitmap over the partition's records in thread-major order
   u64 toff[65];
   toff[0] = 0;
-  for (int t = 0; t < NT; t++) toff[t + 1] = toff[t] + TC[t].ps[p].count();
+  for (int t = 0; t < NT; t++) toff[t + 1] = toff[t] + TC[t].ps.count(p);
   W.deadbm.ensure(nrec / 64 + 2);
   u64* dead = W.deadbm.p;
   memset(dead, 0, (nrec / 64 + 2) * sizeof(u64));
@@ -1587,7 +1624,7 @@ static void person_partition(TCtx& W, u32 p) {
     }
   u64 gi = 0;
   for (int t = 0; t < NT; t++) {
-    Strm<PRec>& st = TC[t].ps[p];
+    auto st = TC[t].ps.view(p);
     for (size_t b = 0; b < st.blocks.size(); b++) {
       const PRec* r = TC[t].pa.blk(st.blocks[b]);
       u32 cnt = st.bcount(b);
@@ -1623,7 +1660,7 @@ static void person_partition(TCtx& W, u32 p) {
   }
   size_t live = k;
   for (int t = 0; t < NT; t++) {
-    Strm<NRec>& st = TC[t].ns[p];
+    auto st = TC[t].ns.view(p);
     for (size_t b = 0; b < st.blocks.size(); b++) {
       const NRec* r = TC[t].na.blk(st.blocks[b]);
       u32 cnt = st.bcount(b);
@@ -1680,7 +1717,7 @@ static void person_partition(TCtx& W, u32 p) {
   CK* ckt = W.cktmp.p;
   size_t kc = 0;
   for (int t = 0; t < NT; t++) {
-    Strm<CRec>& st = TC[t].cs[p];
+    auto st = TC[t].cs.view(p);
     for (size_t b = 0; b < st.blocks.size(); b++) {
       const CRec* r = TC[t].ca.blk(st.blocks[b]);
       u32 cnt = st.bcount(b);
@@ -2186,8 +2223,6 @@ int main(int argc, char** argv) {
     TC[t].ps.resize(1u << PBITS);
     TC[t].kills.resize(1u << PBITS);
     TC[t].ns.resize(1u << PBITS);
-    TC[t].pswc = (PRec*)aligned_alloc(64, (size_t)64 << PBITS);
-    TC[t].eswc = (ERec*)aligned_alloc(64, (size_t)64 << QBITS);
     TC[t].cs.resize(1u << PBITS);
     TC[t].es.resize(1u << QBITS);
   }
@@ -2221,8 +2256,6 @@ int main(int argc, char** argv) {
         else
           clicks_chunk(W, ckf[j.c.file], j.c.s, j.c.e);
       }
-      for (u32 p = 0; p < (1u << PBITS); p++) W.ps[p].flush_wc(W.pswc + 4 * (size_t)p);
-      for (u32 q = 0; q < (1u << QBITS); q++) W.es[q].flush_wc(W.eswc + 4 * (size_t)q);
       store_fence();
     });
   }
@@ -2247,7 +2280,7 @@ int main(int argc, char** argv) {
     std::vector<std::pair<u64, u32>> order(P);
     for (u32 p = 0; p < P; p++) {
       u64 s = 0;
-      for (int t = 0; t < NT; t++) s += TC[t].ps[p].count();
+      for (int t = 0; t < NT; t++) s += TC[t].ps.count(p);
       order[p] = {s, p};
     }
     std::sort(order.begin(), order.end(), [](auto& a, auto& b) { return a.first > b.first; });
