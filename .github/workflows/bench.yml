@@ -48,7 +48,7 @@ jobs:
           ( /tmp/generator/target/release/generate --seed 3 --events 1000000 --clicks 250000 --output /tmp/train >/dev/null &&
             $CXX -fprofile-instr-generate -o /tmp/cpgogen src/pipeline.cpp && rm -rf /tmp/tout &&
             LLVM_PROFILE_FILE=/tmp/cpgo-%p.profraw NCPU=4 /tmp/cpgogen /tmp/train /tmp/tout && ls /tmp/cpgo-*.profraw &&
-            PD=$(command -v llvm-profdata || ls /usr/bin/llvm-profdata-* 2>/dev/null | tail -1) && $PD merge -o /tmp/cpgo.profdata /tmp/cpgo-*.profraw &&
+            CV=$(clang++ --version | grep -oE "version [0-9]+" | grep -oE "[0-9]+"); PD=$(ls /usr/bin/llvm-profdata-$CV /usr/lib/llvm-$CV/bin/llvm-profdata 2>/dev/null | head -1); echo "profdata $PD" && $PD merge -o /tmp/cpgo.profdata /tmp/cpgo-*.profraw &&
             $CXX -fprofile-instr-use=/tmp/cpgo.profdata -o /tmp/cpgo src/pipeline.cpp 2>&1 | tail -3 && echo -n " cpgo" >> /tmp/bins ) 2>&1 | tail -5 | tee -a $R
           # gcc build of the candidate for reference
           g++ -O3 -march=x86-64-v3 -mtune=cascadelake -std=c++17 -pthread -static -o /tmp/gcc_bin src/pipeline.cpp && echo -n " gcc_bin" >> /tmp/bins
