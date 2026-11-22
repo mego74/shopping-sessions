@@ -534,6 +534,7 @@ static void flatten_window(const char* base, u64 wb, u64 we, u64 ls, Flat& FL, u
     nm = nnm;
     qm = nqm;
   }
+  for (int i = 0; i < 8; i++) FL.com[nc + i] = 0xFFFFFFFFu;  // sentinels: past the last comma
   nc_out = nc;
   nn_out = nn;
 }
@@ -578,7 +579,8 @@ static AI void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line) {
       const u32 le = nlw & 0x3FFFFFFFu;
       const u32 qn = FL.nlq[j] - prevq;
       prevq = FL.nlq[j];
-      const bool cnt_ok = (ci + NF - 2 < nc) && (FL.com[ci + NF - 2] < le) && (ci + NF - 1 >= nc || FL.com[ci + NF - 1] > le);
+      // exactly NF-1 commas before this newline (ci <= nc, and sentinels follow the last comma)
+      const bool cnt_ok = (FL.com[ci + NF - 2] < le) & (FL.com[ci + NF - 1] > le);
       if (LIKELY(cnt_ok)) {
         const u32 fmask = (1u << NF) - 1;
         const u32 isqm = (u32)((bits_get(FL.cqa, ci) << 1) | lsq) & fmask;
@@ -745,7 +747,46 @@ static void init_cal() {
 }
 
 // "YYYY-MM-DDTHH:MM:SS" at s -> seconds since epoch (validated). Reads s[0..24).
+#if defined(__x86_64__) && defined(__SSE4_1__) && !defined(NOTSSE)
+#define TSSE 1
+// "YYYY-MM-DDTHH:MM" minus '0' -> 16-bit lanes YY, YY, MO, DD, HH, MI, 0, 0
+static AI __m128i ts_pairs(__m128i d) {
+  const __m128i sh = _mm_setr_epi8(0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, -1, -1, -1, -1);
+  return _mm_maddubs_epi16(_mm_shuffle_epi8(d, sh), _mm_setr_epi8(10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 0, 0, 0, 0));
+}
+#endif
 static AI bool dt19(const char* s, i64& secs) {
+#ifdef TSSE
+  const __m128i v = _mm_loadu_si128((const __m128i*)s);
+  const __m128i d = _mm_sub_epi8(v, _mm_set1_epi8('0'));
+  const __m128i dig = _mm_cmpeq_epi8(_mm_min_epu8(d, _mm_set1_epi8(9)), d);
+  const __m128i sep = _mm_cmpeq_epi8(v, _mm_setr_epi8(0, 0, 0, 0, '-', 0, 0, '-', 0, 0, 'T', 0, 0, ':', 0, 0));
+  const u32 m = ((u32)_mm_movemask_epi8(dig) & 0xDB6Fu) | ((u32)_mm_movemask_epi8(sep) & 0x2490u);
+  u32 t;
+  memcpy(&t, s + 16, 4);
+  const u32 t1 = ((t >> 8) & 0xFF) - 48u, t2 = ((t >> 16) & 0xFF) - 48u;
+  const __m128i w = ts_pairs(d);
+  // month 1..12, day 1..31, hour <= 23, minute <= 59 (lanes: YY YY MO DD HH MI 0 0)
+  const __m128i bad = _mm_or_si128(_mm_cmpgt_epi16(w, _mm_setr_epi16(99, 99, 12, 31, 23, 59, 0, 0)),
+                                   _mm_cmpgt_epi16(_mm_setr_epi16(0, 0, 1, 1, 0, 0, 0, 0), w));
+  const u32 ss = t1 * 10 + t2;
+  if ((m != 0xFFFFu) | ((t & 0xFF) != (u32)':') | (t1 > 9) | (t2 > 9) | (ss > 59) | (_mm_movemask_epi8(bad) != 0)) return false;
+  const __m128i yh = _mm_madd_epi16(w, _mm_setr_epi16(100, 1, 0, 0, 3600, 60, 0, 0));  // year, h*3600 + m*60
+  const unsigned y = (unsigned)_mm_cvtsi128_si32(yh), hms = (unsigned)_mm_extract_epi32(yh, 2);
+  const unsigned mo = (unsigned)_mm_extract_epi16(w, 2), dd = (unsigned)_mm_extract_epi16(w, 3);
+  i64 days;
+  const unsigned yi = y - (unsigned)YBASE;
+  if (LIKELY(yi < (unsigned)YSPAN)) {
+    if (dd > MDIM[yi * 13 + mo]) return false;
+    days = MSTART[yi * 13 + mo] + (i64)dd - 1;
+  } else {
+    unsigned dim = (unsigned)DIM[mo] + (mo == 2 && is_leap((int)y));
+    if (dd > dim) return false;
+    days = days_from_civil((i64)y, mo, dd);
+  }
+  secs = days * 86400 + (i64)(hms + ss);
+  return true;
+#else
   const u64 a = load64(s), b = load64(s + 8), c = load64(s + 16);
   const u64 SA = 0xFF0000FF00000000ULL, VA = ((u64)'-' << 32) | ((u64)'-' << 56);
   const u64 SB = 0x0000FF0000FF0000ULL, VB = ((u64)'T' << 16) | ((u64)':' << 40);
@@ -775,10 +816,21 @@ static AI bool dt19(const char* s, i64& secs) {
   }
   secs = days * 86400 + (i64)(hh * 3600 + mi * 60 + ss);
   return true;
+#endif
 }
 
 // ingest_ts is always valid F1 (rules.md): extract without validation.
 static AI i64 ingest_secs(const char* s) {
+#ifdef TSSE
+  const __m128i w = ts_pairs(_mm_sub_epi8(_mm_loadu_si128((const __m128i*)s), _mm_set1_epi8('0')));
+  const __m128i yh = _mm_madd_epi16(w, _mm_setr_epi16(100, 1, 0, 0, 3600, 60, 0, 0));
+  const unsigned y = (unsigned)_mm_cvtsi128_si32(yh), hms = (unsigned)_mm_extract_epi32(yh, 2);
+  const unsigned mo = (unsigned)_mm_extract_epi16(w, 2), dd = (unsigned)_mm_extract_epi16(w, 3);
+  const unsigned ss = ((unsigned char)s[17] - 48u) * 10 + ((unsigned char)s[18] - 48u);
+  const unsigned yi = y - (unsigned)YBASE;
+  const i64 days = (yi < (unsigned)YSPAN && mo - 1u < 12u) ? MSTART[yi * 13 + mo] : days_from_civil((i64)y, mo ? mo : 1, 1);
+  return (days + (i64)dd - 1) * 86400 + (i64)(hms + ss);
+#else
   const u64 Z = 0x3030303030303030ULL;
   const u64 ta = (load64(s) ^ Z) & 0x00FFFF00FFFFFFFFULL, tb = (load64(s + 8) ^ Z) & 0xFFFF00FFFF00FFFFULL,
             tc = (load64(s + 16) ^ Z) & 0x0000000000FFFF00ULL;
@@ -789,6 +841,7 @@ static AI i64 ingest_secs(const char* s) {
   i64 days = (yi < (unsigned)YSPAN && mo - 1u < 12u) ? MSTART[yi * 13 + mo] : days_from_civil((i64)y, mo ? mo : 1, 1);
   days += (i64)(pb & 0xFF) - 1;
   return days * 86400 + (i64)(((pb >> 24) & 0xFF) * 3600 + ((pb >> 48) & 0xFF) * 60 + ((pc >> 8) & 0xFF));
+#endif
 }
 
 // F1 (n==20) or F2 (n==25). Returns ms.

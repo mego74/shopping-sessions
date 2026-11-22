@@ -1,3 +1,3 @@
-scalarf -DSCALARFIELDS
+notsse -DNOTSSE
 pfw64 -DPFW=64
-flatfn -DFLATFN
+scalarf -DSCALARFIELDS
