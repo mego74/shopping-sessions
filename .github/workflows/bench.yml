@@ -49,6 +49,10 @@ jobs:
           rm -rf /tmp/tout; NCPU=4 /tmp/pgogen /tmp/train /tmp/tout && rm -rf /tmp/tout && NCPU=4 /tmp/pgogen /tmp/train /tmp/tout; ls -la /tmp/pgo | tee -a $GITHUB_WORKSPACE/$R
           $CXX -fprofile-use -fprofile-correction -c -o pipeline.o pipeline.cpp 2>&1 | head -5 | tee -a $GITHUB_WORKSPACE/$R; $CXX -o /tmp/pgo_bin pipeline.o && echo -n " pgo_bin" >> /tmp/bins
           cd $GITHUB_WORKSPACE
+          # clang build of the candidate (static, same target flags)
+          for CC in clang++-18 clang++; do if command -v $CC >/dev/null; then
+            $CC --version | head -1 | tee -a $R
+            $CC -O3 -march=x86-64-v3 -mtune=cascadelake -std=c++17 -pthread -static -o /tmp/clang_bin src/pipeline.cpp 2>&1 | tail -3 | tee -a $R && echo -n " clang_bin" >> /tmp/bins; break; fi; done
           tr -d '\n' < /tmp/bins > /tmp/bins2; echo >> /tmp/bins2; cat /tmp/bins2
       - name: Correctness gate (scorer build flags)
         run: |
@@ -59,7 +63,7 @@ jobs:
           /tmp/generator/target/release/generate --seed 1 --events 1000000 --clicks 250000 --output /tmp/dev >/dev/null
           SD=$(dirname $(find /tmp/st -name run_fixtures.py | head -1)); FX=$(find /tmp/st -type d -name fixtures | head -1); DA=$(dirname $(find /tmp/da -name user_daily.csv | head -1))
           cd $GITHUB_WORKSPACE
-          for B in cand pgo_bin; do [ -x /tmp/$B ] || continue
+          for B in cand pgo_bin clang_bin; do [ -x /tmp/$B ] || continue
             { echo "== correctness $B"; NCPU=4 python3 $SD/run_fixtures.py $FX -- /tmp/$B | tail -1
               rm -rf /tmp/devout; NCPU=4 /tmp/$B /tmp/dev /tmp/devout && (cd $SD && python3 compare.py /tmp/devout $DA | tail -1); } 2>&1 | tee -a $R; done
       - name: A/B timing
