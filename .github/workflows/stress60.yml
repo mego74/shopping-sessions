@@ -24,7 +24,10 @@ jobs:
         run: |
           mkdir -p results; R=results/stress-$(git rev-parse --short HEAD).txt
           lscpu | grep "Model name" | tee $R
-          g++ -O3 -march=x86-64-v3 -mtune=cascadelake -std=c++17 -pthread -static -o /tmp/p src/pipeline.cpp
+          # the binary the scorer builds: the repository's Dockerfile
+          docker build -q -t ss:stress . > /tmp/dbuild.txt 2>&1 && id=$(docker create ss:stress) && docker cp $id:/pipeline /tmp/p && docker rm $id >/dev/null && echo "built from Dockerfile" | tee -a $R
+          g++ -O3 -march=x86-64-v3 -mtune=cascadelake -std=c++17 -pthread -static -o /tmp/pg src/pipeline.cpp
+          rm -rf /tmp/og; env NCPU=8 /tmp/pg /tmp/f60 /tmp/og 2>/dev/null; echo "gcc build exit $?" | tee -a $R
           for n in 4 8; do rm -rf /tmp/o$n; rc=0
             /usr/bin/time -f "RUN ncpu=$n wall %e user %U sys %S maxrss %MKB" env NCPU=$n PIPE_VERBOSE=1 /tmp/p /tmp/f60 /tmp/o$n 2>/tmp/e$n || rc=$?
             { echo "exit $rc"; grep -E "ms\]|RUN|rows|FATAL" /tmp/e$n; } | tee -a $R; done
@@ -36,6 +39,8 @@ jobs:
           same_u = u4.sort(u4.columns).equals(u8.sort(u8.columns)); same_c = c4.sort(c4.columns).equals(c8.sort(c8.columns))
           print("rows user_daily", u4.height, "campaign_daily", c4.height)
           print("ncpu4 == ncpu8:", same_u, same_c)
+          ug = pl.read_parquet("/tmp/og/user_daily/*.parquet"); cg = pl.read_parquet("/tmp/og/campaign_daily/*.parquet")
+          print("dockerfile build == gcc build:", ug.sort(ug.columns).equals(u8.sort(u8.columns)), cg.sort(cg.columns).equals(c8.sort(c8.columns)))
           print("sessions equal:", u4["sessions"].sum() == c4["sessions"].sum(), u4["sessions"].sum(), c4["sessions"].sum())
           print("revenue equal:", u4["revenue_cents"].sum() == c4["revenue_cents"].sum())
           nonorg = c4.filter(pl.col("campaign_id") != "organic")["sessions"].sum()
