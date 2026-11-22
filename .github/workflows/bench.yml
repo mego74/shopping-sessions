@@ -60,6 +60,19 @@ jobs:
               w = sorted(x[0] for x in v[k]); u = sorted(x[1] for x in v[k])
               print(f"SUMMARY {k:10s}: median wall {st.median(w):.3f}s  min {w[0]:.3f}s  median user {st.median(u):.2f}s  ratio {st.median(w)/bm:.3f}")
           PY
+      - name: Container overhead (docker start/finish timestamps, scorer flags)
+        continue-on-error: true
+        run: |
+          R=results/$(git rev-parse --short HEAD).txt
+          mkdir -p /tmp/e0 && printf 'int main(){return 0;}' > /tmp/e0/t.c && gcc -static -O2 -o /tmp/e0/exit0 /tmp/e0/t.c
+          printf 'FROM scratch\nCOPY exit0 /exit0\nCMD ["/exit0"]\n' > /tmp/e0/Dockerfile && docker build -q -t ss:exit0 /tmp/e0 >/dev/null
+          docker build -q -t ss:cand . >/dev/null
+          mkdir -p /tmp/dout /tmp/dscr && chmod 777 /tmp/dout /tmp/dscr
+          FLAGS="--network none --read-only --tmpfs /tmp:rw,size=64m,mode=1777 --cap-drop ALL --security-opt no-new-privileges --cpus 4 --memory 14g --memory-swap 14g --user 1000:1000 -v /tmp/p20:/data:ro -v /tmp/dout:/output -v /tmp/dscr:/scratch -e DATA_DIR=/data -e OUTPUT_DIR=/output -e SCRATCH_DIR=/scratch -e HOME=/scratch -e NCPU=4 -e MEM_GB=14 -e PIPE_VERBOSE=1"
+          span() { docker inspect -f '{{.State.StartedAt}} {{.State.FinishedAt}}' $1 | python3 -c "import sys,datetime as d; a,b=sys.stdin.read().split(); f=lambda x: d.datetime.fromisoformat(x[:26].rstrip('Z')); print(f'{(f(b)-f(a)).total_seconds():.3f}')"; }
+          for i in 1 2 3 4 5; do cid=$(docker run -d $FLAGS ss:exit0); docker wait $cid >/dev/null; echo "OVERHEAD exit0 container span $(span $cid)s" | tee -a $R; docker rm $cid >/dev/null; done
+          for i in 1 2 3 4; do sudo rm -rf /tmp/dout/*; cid=$(docker run -d $FLAGS ss:cand); docker wait $cid >/dev/null
+            echo "OVERHEAD pipeline container span $(span $cid)s, internal $(docker logs $cid 2>&1 | grep -E 'released|written' | tail -1)" | tee -a $R; docker rm $cid >/dev/null; done
       - name: Perf (candidate)
         continue-on-error: true
         run: |

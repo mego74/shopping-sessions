@@ -786,8 +786,10 @@ struct Arena {
   u32 nblocks = 0;
   Arena() { memset(chunks, 0, sizeof chunks); }
   std::vector<u32> owner;  // block -> partition that owns it
-  inline u32 alloc(u32 own = 0) {
+  std::vector<u32> ord;    // block -> its index in the owning stream's block list
+  inline u32 alloc(u32 own = 0, u32 ordinal = 0) {
     owner.push_back(own);
+    ord.push_back(ordinal);
     u32 b = nblocks++;
     u32 c = b / CHB;
     if (c >= 2048) die("arena overflow");
@@ -824,7 +826,7 @@ struct alignas(64) Strm {
   std::vector<u32> blocks;
   inline u32 push(const T& v, Arena<T>& a, u32 own = 0) {
     if (UNLIKELY(wp == we)) {
-      cur = a.alloc(own);
+      cur = a.alloc(own, (u32)blocks.size());
       blocks.push_back(cur);
       bp = wp = a.blk(cur);
       we = wp + BLK;
@@ -843,7 +845,7 @@ struct alignas(64) Strm {
     return push(v, a, own);  // plain stores measured faster than streaming stores on Intel and AMD
 #endif
     if (fill == 0 && UNLIKELY(wp == we)) {
-      cur = a.alloc(own);
+      cur = a.alloc(own, (u32)blocks.size());
       blocks.push_back(cur);
       bp = wp = a.blk(cur);
       we = wp + BLK;
@@ -910,6 +912,7 @@ struct TCtx {
   Buf<u32> ptv;
   std::vector<Pers> persons;
   std::vector<u64> kl;
+  Buf<u64> deadbm;
   Buf<u32> lp_of;
   Buf<u64> tmp64;
   Buf<u64> ev;
@@ -1156,8 +1159,11 @@ static inline void flushC(TCtx& W, PendC* pc, int n) {
   }
 }
 
+#ifndef PEND
+#define PEND 16
+#endif
 static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
-  PendE pend[16];
+  PendE pend[PEND];
   int npd = 0;
   const u32 qmask = (1u << QBITS) - 1;
   for_lines<7>(f, s, e, *W.flat, [&](Fld* fl) {
@@ -1215,7 +1221,7 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
     pd.ekey = ekey;
     pd.ing = ing;
     pd.q = q;
-    if (npd == 16) {
+    if (npd == PEND) {
       flushE(W, pend, npd);
       npd = 0;
     }
@@ -1261,7 +1267,8 @@ static void dedup_partition(TCtx& W, u32 q) {
   auto kill = [&](u32 g) {  // queue the losing copy for its person partition (no random write)
     if (g == INVALID) return;
     u32 t = g >> TSHIFT, idx = g & ((1u << TSHIFT) - 1);
-    W.kills[TC[t].pa.owner[idx / BLK]].push_back(((u64)t << 32) | idx);
+    const u32 b = idx / BLK;
+    W.kills[TC[t].pa.owner[b]].push_back(((u64)t << 32) | (TC[t].pa.ord[b] * BLK + idx % BLK));
   };
   for (int t = 0; t < NT; t++) {
     Strm<ERec>& st = TC[t].es[q];
@@ -1566,24 +1573,27 @@ static void person_partition(TCtx& W, u32 p) {
     cap = nc;
     mask = nm;
   };
-  std::vector<u64>& KL = W.kl;
-  KL.clear();
-  for (int t = 0; t < NT; t++) KL.insert(KL.end(), TC[t].kills[p].begin(), TC[t].kills[p].end());
-  std::sort(KL.begin(), KL.end());
-  KL.push_back(~0ULL);
-  size_t kp = 0;
+  // dead (deduplicated-away) records: bitmap over the partition's records in thread-major order
+  u64 toff[65];
+  toff[0] = 0;
+  for (int t = 0; t < NT; t++) toff[t + 1] = toff[t] + TC[t].ps[p].count();
+  W.deadbm.ensure(nrec / 64 + 2);
+  u64* dead = W.deadbm.p;
+  memset(dead, 0, (nrec / 64 + 2) * sizeof(u64));
+  for (int u = 0; u < NT; u++)
+    for (u64 kv : TC[u].kills[p]) {
+      const u64 g = toff[kv >> 32] + (u32)kv;
+      dead[g >> 6] |= 1ULL << (g & 63);
+    }
+  u64 gi = 0;
   for (int t = 0; t < NT; t++) {
     Strm<PRec>& st = TC[t].ps[p];
     for (size_t b = 0; b < st.blocks.size(); b++) {
       const PRec* r = TC[t].pa.blk(st.blocks[b]);
       u32 cnt = st.bcount(b);
-      const u64 base = ((u64)t << 32) | ((u64)st.blocks[b] * BLK);
-      for (u32 i = 0; i < cnt; i++) {
+      for (u32 i = 0; i < cnt; i++, gi++) {
         const PRec& x = r[i];
-        if (UNLIKELY(KL[kp] == base + i)) {
-          kp++;
-          continue;
-        }
+        if (UNLIKELY((dead[gi >> 6] >> (gi & 63)) & 1)) continue;
         u64 j = (x.pk >> 20) & mask;
         u32 lp;
         for (;;) {
@@ -2247,6 +2257,18 @@ int main(int argc, char** argv) {
       W.catrev.assign(CATS.size(), 0);
       W.cst.assign(NC + 1, CampState{0, 0, 0, 0});
       size_t cd = (size_t)(NC + 1) * ND;
+      {
+        u64 vt = 0;
+        for (int u = 0; u < NT; u++) vt += TC[u].n_ev_valid;
+        size_t est = (size_t)(vt / 7 / NT) + 4096;
+        W.o_name.reserve(est);
+        W.o_day.reserve(est);
+        W.o_sess.reserve(est);
+        W.o_ev.reserve(est);
+        W.o_rev.reserve(est);
+        W.o_cat.reserve(est);
+        W.names.reserve(est * 8);
+      }
       W.cs_.assign(cd, CStat{0, 0});
       W.cr_.assign(cd, CRev{0, 0});
       for (;;) {
