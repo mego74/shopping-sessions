@@ -1,5 +1,6 @@
 name: bench
-# Linux x86 timing for the pipeline. Runs only when the `bench` branch is pushed.
+# Linux x86 A/B timing: candidate (the pushed `bench` commit) vs a baseline commit, interleaved
+# on the same runner. Baseline = contents of .github/bench-base (a commit SHA), else origin/main.
 on:
   push:
     branches: [bench]
@@ -12,53 +13,57 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Machine
         run: |
           mkdir -p results
           R=results/$(git rev-parse --short HEAD).txt
-          { echo "commit $(git rev-parse HEAD)"; lscpu | egrep 'Model name|^CPU\(s\)|Thread|Core|Socket|L1d|L2|L3|Flags' | cut -c1-200; free -g | head -2; uname -r;
-            echo "thp $(cat /sys/kernel/mm/transparent_hugepage/enabled) defrag $(cat /sys/kernel/mm/transparent_hugepage/defrag)"; } | tee $R
+          { echo "commit $(git rev-parse HEAD)"; lscpu | egrep 'Model name|^CPU\(s\)|L2|L3' | cut -c1-120; uname -r;
+            echo "thp $(cat /sys/kernel/mm/transparent_hugepage/enabled)"; } | tee $R
       - name: Data
         run: |
           curl -sSL -o /tmp/gen.zip https://www.joinbuilders.org/buildathon/tracks/shopping-sessions/files/generator.zip
           cd /tmp && unzip -q gen.zip && cd generator && cargo build --release -q
           ./target/release/generate --seed 7 --events 20000000 --clicks 5000000 --output /tmp/p20
-          du -sh /tmp/p20
-      - name: Build
-        run: g++ -O3 -march=x86-64-v3 -mtune=cascadelake -std=c++17 -pthread -static -g -o /tmp/pipeline src/pipeline.cpp
-      - name: Time
+      - name: Build candidate and baseline
+        run: |
+          R=results/$(git rev-parse --short HEAD).txt
+          BASE=$(cat .github/bench-base 2>/dev/null || git rev-parse origin/main)
+          echo "baseline $BASE" | tee -a $R
+          g++ -O3 -march=x86-64-v3 -mtune=cascadelake -std=c++17 -pthread -static -g -o /tmp/cand src/pipeline.cpp
+          git show $BASE:src/pipeline.cpp > /tmp/base.cpp
+          g++ -O3 -march=x86-64-v3 -mtune=cascadelake -std=c++17 -pthread -static -o /tmp/base /tmp/base.cpp
+      - name: A/B timing
         run: |
           R=results/$(git rev-parse --short HEAD).txt
           cat /tmp/p20/events/*.csv /tmp/p20/clicks/*.csv /tmp/p20/links/*.csv > /dev/null
-          for n in 4 8; do for i in 1 2 3 4 5; do rm -rf /tmp/out
-            /usr/bin/time -f "RUN ncpu=$n wall %e user %U sys %S maxrss %MKB faults %R" env NCPU=$n PIPE_VERBOSE=1 /tmp/pipeline /tmp/p20 /tmp/out 2>&1 | tee -a $R | tail -1
+          for i in 1 2 3 4 5 6 7; do for b in base cand; do rm -rf /tmp/out
+            /usr/bin/time -f "AB $b wall %e user %U sys %S" env NCPU=4 PIPE_VERBOSE=1 /tmp/$b /tmp/p20 /tmp/out 2>/tmp/err_$b.txt >/dev/null
+            tail -1 /tmp/err_$b.txt | tee -a $R
+            [ $i = 7 ] && { echo "-- last $b phases"; cat /tmp/err_$b.txt | grep -v "user_daily rows=" ; } >> $R
           done; done
-      - name: Docker (scorer-style container run)
-        continue-on-error: true
-        run: |
-          R=results/$(git rev-parse --short HEAD).txt
-          docker build -q -t ss:bench . >/dev/null
-          mkdir -p /tmp/dout /tmp/dscratch && chmod 777 /tmp/dout /tmp/dscratch
-          for i in 1 2 3 4; do sudo rm -rf /tmp/dout/*
-            s=$(date +%s.%N)
-            docker run --rm --network none --read-only --tmpfs /tmp:rw,size=64m,mode=1777 --cap-drop ALL --security-opt no-new-privileges \
-              --cpus 4 --memory 14g --memory-swap 14g --user 1000:1000 -v /tmp/p20:/data:ro -v /tmp/dout:/output -v /tmp/dscratch:/scratch \
-              -e DATA_DIR=/data -e OUTPUT_DIR=/output -e SCRATCH_DIR=/scratch -e HOME=/scratch -e NCPU=4 -e MEM_GB=14 ss:bench
-            e=$(date +%s.%N); echo "DOCKER run $i: $(echo "$e - $s" | bc) s (includes docker CLI overhead)" | tee -a $R
-          done
-          cid=$(docker run -d --network none --cpus 4 --user 1000:1000 -v /tmp/p20:/data:ro -v /tmp/dout:/output -e NCPU=4 ss:bench); docker wait $cid >/dev/null
-          docker inspect -f 'DOCKER state start {{.State.StartedAt}} end {{.State.FinishedAt}} exit {{.State.ExitCode}}' $cid | tee -a $R; docker rm $cid >/dev/null
-      - name: Perf
+          python3 - "$R" <<'PY' | tee -a $R
+          import sys, statistics as st
+          v = {}
+          for ln in open(sys.argv[1]):
+              if ln.startswith("AB "):
+                  p = ln.split(); v.setdefault(p[1], []).append((float(p[3]), float(p[5])))
+          for k in ("base", "cand"):
+              w = sorted(x[0] for x in v[k]); u = sorted(x[1] for x in v[k])
+              print(f"SUMMARY {k}: median wall {st.median(w):.3f}s  min {w[0]:.3f}s  median user {st.median(u):.2f}s")
+          print(f"SUMMARY cand/base wall ratio {st.median(x[0] for x in v['cand'])/st.median(x[0] for x in v['base']):.3f}")
+          PY
+      - name: Perf (candidate)
         continue-on-error: true
         run: |
           R=results/$(git rev-parse --short HEAD).txt
           sudo apt-get install -y -q linux-tools-common linux-tools-$(uname -r) >/dev/null 2>&1 || sudo apt-get install -y -q linux-tools-azure >/dev/null 2>&1 || true
           PERF=$(ls /usr/lib/linux-tools/*/perf 2>/dev/null | head -1); [ -z "$PERF" ] && PERF=perf
           sudo sysctl -w kernel.perf_event_paranoid=-1 >/dev/null; sudo sysctl -w kernel.kptr_restrict=0 >/dev/null
-          rm -rf /tmp/out; $PERF stat -e task-clock,page-faults,context-switches,cycles,instructions,branch-misses,cache-misses,dTLB-load-misses env NCPU=4 /tmp/pipeline /tmp/p20 /tmp/out 2>&1 | tail -20 | tee -a $R
-          rm -rf /tmp/out; $PERF record -F 4999 -o /tmp/perf.data env NCPU=4 /tmp/pipeline /tmp/p20 /tmp/out >/dev/null 2>&1
-          { echo "== perf by symbol"; $PERF report -i /tmp/perf.data --no-children --sort sym --stdio 2>/dev/null | grep -v '^#' | grep -v '^$' | head -45;
-            echo "== perf by srcline (top)"; $PERF report -i /tmp/perf.data --no-children --sort srcline --stdio 2>/dev/null | grep -v '^#' | grep -v '^$' | head -90; } | tee -a $R
+          rm -rf /tmp/out; $PERF record -F 4999 -o /tmp/perf.data env NCPU=4 /tmp/cand /tmp/p20 /tmp/out >/dev/null 2>&1
+          { echo "== perf by symbol"; $PERF report -i /tmp/perf.data --no-children --sort sym --stdio 2>/dev/null | grep -v '^#' | grep -v '^$' | head -30;
+            echo "== perf by srcline (top)"; $PERF report -i /tmp/perf.data --no-children --sort srcline --stdio 2>/dev/null | grep -v '^#' | grep -v '^$' | head -120; } | tee -a $R
       - name: Publish
         if: always()
         run: |
