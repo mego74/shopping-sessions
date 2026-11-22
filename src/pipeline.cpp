@@ -438,7 +438,7 @@ static inline u64 align_start(const MFile& f, u64 s);
 // Quote rules come from bit masks: a field is quoted iff a quote follows its opening separator;
 // it must then end with a quote and be >= 2 long, and the line's quote count must be 2 x quoted fields.
 template <int NF, class F>
-static inline void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line) {
+static AI void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line) {
   u64 ls = align_start(f, s);
   const char* base = f.p;
   const u64 lim = (f.n + 63) & ~(u64)63;
@@ -572,7 +572,7 @@ static AI u64 lowbits(u32 k) { return k >= 64 ? ~0ULL : ((1ULL << k) - 1); }
 // Per-line variant of for_lines: SIMD masks over 192 bytes from each line start (lines are almost
 // always shorter), separators extracted branch-free; longer lines use the incremental scanner.
 template <int NF, int NW = 3, class F>
-static inline void for_lines2(const MFile& f, u64 s, u64 e, F&& on_line) {
+static AI void for_lines2(const MFile& f, u64 s, u64 e, F&& on_line) {
   u64 ls = align_start(f, s);
   const char* base = f.p;
   Fld fl[NF];
@@ -1489,9 +1489,9 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
   int npd = 0;
   const u32 qmask = (1u << QBITS) - 1;
 #ifdef LINESIMD
-  for_lines2<7>(f, s, e, [&](Fld* fl) {
+  for_lines2<7>(f, s, e, [&](Fld* fl) __attribute__((always_inline)) {
 #else
-  for_lines<7>(f, s, e, *W.flat, [&](Fld* fl) {
+  for_lines<7>(f, s, e, *W.flat, [&](Fld* fl) __attribute__((always_inline)) {
 #endif
     if (fl[0].n == 0) return;
     W.n_ev_lines++;
@@ -1591,9 +1591,9 @@ static void clicks_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
   PendC pend[16];
   int npd = 0;
 #ifdef LINESIMD
-  for_lines2<4, CLICKW>(f, s, e, [&](Fld* fl) {
+  for_lines2<4, CLICKW>(f, s, e, [&](Fld* fl) __attribute__((always_inline)) {
 #else
-  for_lines<4>(f, s, e, *W.flat, [&](Fld* fl) {
+  for_lines<4>(f, s, e, *W.flat, [&](Fld* fl) __attribute__((always_inline)) {
 #endif
     if (fl[0].n == 0 || fl[1].n == 0) return;
     i64 ts;
