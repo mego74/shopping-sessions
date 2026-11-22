@@ -1,0 +1,53 @@
+name: bench
+# Linux x86 timing for the pipeline. Runs only when the `bench` branch is pushed.
+on:
+  push:
+    branches: [bench]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Machine
+        run: |
+          mkdir -p results
+          R=results/$(git rev-parse --short HEAD).txt
+          { echo "commit $(git rev-parse HEAD)"; lscpu | egrep 'Model name|^CPU\(s\)|Thread|Core|Socket|L1d|L2|L3|Flags' | cut -c1-200; free -g | head -2; uname -r;
+            echo "thp $(cat /sys/kernel/mm/transparent_hugepage/enabled) defrag $(cat /sys/kernel/mm/transparent_hugepage/defrag)"; } | tee $R
+      - name: Data
+        run: |
+          curl -sSL -o /tmp/gen.zip https://www.joinbuilders.org/buildathon/tracks/shopping-sessions/files/generator.zip
+          cd /tmp && unzip -q gen.zip && cd generator && cargo build --release -q
+          ./target/release/generate --seed 7 --events 20000000 --clicks 5000000 --output /tmp/p20
+          du -sh /tmp/p20
+      - name: Build
+        run: g++ -O3 -march=x86-64-v3 -mtune=cascadelake -std=c++17 -pthread -static -g -o /tmp/pipeline src/pipeline.cpp
+      - name: Time
+        run: |
+          R=results/$(git rev-parse --short HEAD).txt
+          cat /tmp/p20/events/*.csv /tmp/p20/clicks/*.csv /tmp/p20/links/*.csv > /dev/null
+          for n in 4 8; do for i in 1 2 3 4 5; do rm -rf /tmp/out
+            /usr/bin/time -f "RUN ncpu=$n wall %e user %U sys %S maxrss %MKB faults %R" env NCPU=$n PIPE_VERBOSE=1 /tmp/pipeline /tmp/p20 /tmp/out 2>&1 | tee -a $R | tail -1
+          done; done
+      - name: Perf
+        continue-on-error: true
+        run: |
+          R=results/$(git rev-parse --short HEAD).txt
+          sudo apt-get install -y -q linux-tools-common linux-tools-$(uname -r) >/dev/null 2>&1 || sudo apt-get install -y -q linux-tools-azure >/dev/null 2>&1 || true
+          PERF=$(ls /usr/lib/linux-tools/*/perf 2>/dev/null | head -1); [ -z "$PERF" ] && PERF=perf
+          sudo sysctl -w kernel.perf_event_paranoid=-1 >/dev/null; sudo sysctl -w kernel.kptr_restrict=0 >/dev/null
+          rm -rf /tmp/out; $PERF stat -e task-clock,page-faults,context-switches,cycles,instructions,branch-misses,cache-misses,dTLB-load-misses env NCPU=4 /tmp/pipeline /tmp/p20 /tmp/out 2>&1 | tail -20 | tee -a $R
+          rm -rf /tmp/out; $PERF record -F 4999 -o /tmp/perf.data env NCPU=4 /tmp/pipeline /tmp/p20 /tmp/out >/dev/null 2>&1
+          { echo "== perf by symbol"; $PERF report -i /tmp/perf.data --no-children --sort sym --stdio 2>/dev/null | grep -v '^#' | grep -v '^$' | head -45;
+            echo "== perf by srcline (top)"; $PERF report -i /tmp/perf.data --no-children --sort srcline --stdio 2>/dev/null | grep -v '^#' | grep -v '^$' | head -90; } | tee -a $R
+      - name: Publish
+        if: always()
+        run: |
+          cp -r results /tmp/results
+          git config user.name "bench-bot"; git config user.email "bench-bot@users.noreply.github.com"
+          if git fetch -q origin bench-results; then git checkout -q -B bench-results origin/bench-results; else git checkout -q --orphan bench-results; git rm -rq --cached . ; rm -rf ./*; fi
+          cp /tmp/results/*.txt . && git add *.txt && git commit -qm "bench $(ls /tmp/results)" && git push -q origin bench-results
