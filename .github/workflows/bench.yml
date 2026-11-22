@@ -44,9 +44,11 @@ jobs:
             $CXX $flags -o /tmp/$name src/pipeline.cpp && echo -n " $name" >> /tmp/bins; echo "variant $name: $flags" | tee -a $R; done < .github/bench-variants; fi
           # PGO variant: instrumented build trained on a 1M-event dev set, then rebuilt with the profile
           /tmp/generator/target/release/generate --seed 3 --events 1000000 --clicks 250000 --output /tmp/train >/dev/null
-          mkdir -p /tmp/pgo && $CXX -fprofile-generate -fprofile-update=atomic -fprofile-dir=/tmp/pgo -o /tmp/pgogen src/pipeline.cpp
-          rm -rf /tmp/tout; NCPU=4 /tmp/pgogen /tmp/train /tmp/tout && rm -rf /tmp/tout && NCPU=4 /tmp/pgogen /tmp/train /tmp/tout
-          $CXX -fprofile-use -fprofile-correction -fprofile-dir=/tmp/pgo -Wno-missing-profile -o /tmp/pgo_bin src/pipeline.cpp && echo -n " pgo_bin" >> /tmp/bins
+          mkdir -p /tmp/pgo && cd /tmp/pgo && cp $GITHUB_WORKSPACE/src/pipeline.cpp . 
+          $CXX -fprofile-generate -fprofile-update=atomic -c -o pipeline.o pipeline.cpp && $CXX -fprofile-generate -o /tmp/pgogen pipeline.o
+          rm -rf /tmp/tout; NCPU=4 /tmp/pgogen /tmp/train /tmp/tout && rm -rf /tmp/tout && NCPU=4 /tmp/pgogen /tmp/train /tmp/tout; ls -la /tmp/pgo | tee -a $GITHUB_WORKSPACE/$R
+          $CXX -fprofile-use -fprofile-correction -c -o pipeline.o pipeline.cpp 2>&1 | head -5 | tee -a $GITHUB_WORKSPACE/$R; $CXX -o /tmp/pgo_bin pipeline.o && echo -n " pgo_bin" >> /tmp/bins
+          cd $GITHUB_WORKSPACE
           tr -d '\n' < /tmp/bins > /tmp/bins2; echo >> /tmp/bins2; cat /tmp/bins2
       - name: Correctness gate (scorer build flags)
         run: |
@@ -57,8 +59,9 @@ jobs:
           /tmp/generator/target/release/generate --seed 1 --events 1000000 --clicks 250000 --output /tmp/dev >/dev/null
           SD=$(dirname $(find /tmp/st -name run_fixtures.py | head -1)); FX=$(find /tmp/st -type d -name fixtures | head -1); DA=$(dirname $(find /tmp/da -name user_daily.csv | head -1))
           cd $GITHUB_WORKSPACE
-          { echo "== correctness"; NCPU=4 python3 $SD/run_fixtures.py $FX -- /tmp/cand | tail -1
-            rm -rf /tmp/devout; NCPU=4 /tmp/cand /tmp/dev /tmp/devout && (cd $SD && python3 compare.py /tmp/devout $DA | tail -1); } 2>&1 | tee -a $R
+          for B in cand pgo_bin; do [ -x /tmp/$B ] || continue
+            { echo "== correctness $B"; NCPU=4 python3 $SD/run_fixtures.py $FX -- /tmp/$B | tail -1
+              rm -rf /tmp/devout; NCPU=4 /tmp/$B /tmp/dev /tmp/devout && (cd $SD && python3 compare.py /tmp/devout $DA | tail -1); } 2>&1 | tee -a $R; done
       - name: A/B timing
         run: |
           R=results/$(git rev-parse --short HEAD)-${{ matrix.job }}.txt
