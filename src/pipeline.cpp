@@ -56,11 +56,22 @@ static void die(const char* msg) {
 }
 
 // ---------------------------------------------------------------- memory
+// every big anonymous allocation is recorded so the exit-time release frees exactly these ranges
+struct BigReg {
+  void* p;
+  size_t n;
+};
+static std::vector<BigReg> BIGREGS;
+static std::atomic_flag BIGLOCK = ATOMIC_FLAG_INIT;
 static void* big_alloc(size_t n) {
   if (n == 0) n = 64;
   n = (n + 4095) & ~(size_t)4095;
   void* p = mmap(nullptr, n, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (p == MAP_FAILED) die("mmap anon");
+  while (BIGLOCK.test_and_set(std::memory_order_acquire)) {
+  }
+  BIGREGS.push_back({p, n});
+  BIGLOCK.clear(std::memory_order_release);
 #ifdef MADV_HUGEPAGE
   if (n >= (4u << 20)) madvise(p, n, MADV_HUGEPAGE);
 #endif
@@ -2701,18 +2712,7 @@ int main(int argc, char** argv) {
     };
     for (auto* fs : {&evf, &ckf, &lkf})
       for (auto& f : *fs) add(f.p, f.n);
-    for (int t = 0; t < NT; t++) {
-      TCtx& W = TC[t];
-      for (int c = 0; c < 2048; c++) {
-        if (W.pa.chunks[c]) add(W.pa.chunks[c], sizeof(PRec) * (size_t)BLK * CHB);
-        if (W.ea.chunks[c]) add(W.ea.chunks[c], sizeof(ERec) * (size_t)BLK * CHB);
-        if (W.ca.chunks[c]) add(W.ca.chunks[c], sizeof(CRec) * (size_t)BLK * CHB);
-        if (W.ua.chunks[c]) add(W.ua.chunks[c], sizeof(URec) * (size_t)BLK * CHB);
-      }
-    }
-    add(IDS, IDCAP * sizeof(IdSlot));
-    if (ETAB) add(ETAB, ECAP * sizeof(ESlot));
-    add(IDP, IDCAP * sizeof(u64));
+    for (const BigReg& r : BIGREGS) add(r.p, r.n);
     if (total > ((size_t)256 << 20)) {
       std::atomic<size_t> nx{0};
       par_run([&](int) {

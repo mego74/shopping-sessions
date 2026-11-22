@@ -1,1 +1,3 @@
-dl -DDUMMY_SAME
+usewc -DUSEWC
+pend32 -DPEND=32
+linesimd -DLINESIMD
