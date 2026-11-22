@@ -1,3 +1,1 @@
-stage1 -DSTAGE=1
-stage2 -DSTAGE=2
-stage3 -DSTAGE=3
+q4 -DQDIV=48000.0

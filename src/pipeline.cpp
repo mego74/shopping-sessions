@@ -743,8 +743,13 @@ static int NC = 0;  // number of campaigns; organic = NC
 // ID table (links)
 struct IdSlot {
   std::atomic<u64> key;
-  u64 pkey;
+  std::atomic<u32> pid1;  // dense person id + 1 (0 = not yet published)
+  u32 pad;
 };
+static u64* NAMEP = nullptr;          // person id -> name (encoded pointer)
+static std::atomic<u32> PIDCTR{0};    // next unassigned person id
+static u32 PIDMAX = 0;                // person ids are < PIDMAX after parsing
+static u32 PMASK = 0;
 static IdSlot* IDS = nullptr;
 static u64* IDP = nullptr;            // string ptr per slot
 static u64* PRE = nullptr;            // first 8 bytes of the ID, big-endian (byte-wise order)
@@ -754,23 +759,26 @@ static u64 IDCAP = 16;
 static inline u64 id_home(u64 h) { return (u64)(((__uint128_t)h * IDCAP) >> 64); }
 
 // ---------------------------------------------------------------- records & arenas
-struct PRec {
-  u64 pk;
-  u64 packed;  // ts_rel<<32 | X<<24 | price   X=0xFF non-purchase, 0xFE deduped away, else cat
+struct PRec {  // a valid event: dense person id, ms since window start
+  u32 pid;
+  u32 ts;
 };
-struct NRec {  // name of an unlinked person (its own user_id)
-  u64 pk;
-  u64 np;
+struct URec {  // a valid purchase: person, ts, category<<24 | price, stream-local index of its PRec
+  u32 pid;
+  u32 ts;
+  u32 cp;
+  u32 ploc;
 };
-static const u64 XMASK = 0xFFULL << 24, XDEAD = 0xFEULL << 24;
 struct ERec {
   u64 key;
   u32 ing;
   u32 gidx;
 };
 struct CRec {
-  u64 pk;
-  u64 key;  // ts_rel(click base)<<32 | campaign
+  u32 pid;
+  u32 ts;  // ms since click window start
+  u32 camp;
+  u32 pad;
   u64 idp;
 };
 struct LRec {
@@ -907,10 +915,8 @@ struct StreamSet {
   size_t count(u32 s) const { return view(s).count(); }
 };
 
-struct Pers {
-  u64 pk;
-  u64 np;
-  u32 cnt, off, ccnt, coff;
+struct LPS {  // per local person slot inside a partition
+  u32 n, fill, ccnt, coff, ucnt, uoff;
 };
 struct CK {
   u64 key;
@@ -930,9 +936,9 @@ struct TCtx {
   int id = 0;
   Flat* flat = new Flat;
   Arena<PRec> pa;
-  Arena<NRec> na;
-  StreamSet<NRec> ns;
-  u64* ncache = (u64*)calloc(4096, sizeof(u64));
+  Arena<URec> ua;
+  StreamSet<URec> us;
+  u32 pid_next = 0, pid_end = 0;
   Arena<ERec> ea;
   Arena<CRec> ca;
   StreamSet<PRec> ps;
@@ -945,16 +951,16 @@ struct TCtx {
   Buf<ERec> dtab;
   std::vector<std::vector<u64>> kills;  // per person partition: (thread << 32 | arena index) of losing copies
   // person scratch
-  Buf<u64> ptk;
-  Buf<u32> ptv;
-  std::vector<Pers> persons;
-  std::vector<u64> kl;
+  Buf<LPS> lps;
+  std::vector<u32> act;
   Buf<u64> deadbm;
-  Buf<u32> lp_of;
-  Buf<u64> tmp64;
-  Buf<u64> ev;
+  Buf<u32> tts, tlp, t2, l2;
+  Buf<u32> ev;
   Buf<u64> radtmp;
-  Buf<u32> lp2;
+  Buf<u64> uarr, utmp;
+  Buf<u32> ulp;
+  Buf<u64> pday;
+  Buf<u32> s_cnt;
   Buf<u32> clp;
   Buf<CK> cktmp;
   Buf<CK> ck;
@@ -1047,7 +1053,7 @@ static inline u32 id_insert(u64 h, u64 ptr) {
   }
 }
 
-static void links_phase(const std::vector<MFile>& lf) {
+static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
   std::vector<Chunk> ch = make_chunks(lf, 1 << 20);
   std::atomic<size_t> next{0};
   par_run([&](int t) {
@@ -1073,7 +1079,8 @@ static void links_phase(const std::vector<MFile>& lf) {
   });
   u64 nl = 0;
   for (int t = 0; t < NT; t++) nl += TC[t].lrecs.size();
-  IDCAP = std::max<u64>(64, nl * 3 + 64);
+  IDCAP = std::max<u64>(1024, nl * 3 + extra_ids * 2 + 1024);
+  NAMEP = (u64*)big_alloc((IDCAP + (u64)NT * 1024 + 64) * sizeof(u64));
   IDS = (IdSlot*)big_alloc(IDCAP * sizeof(IdSlot));
   IDP = (u64*)big_alloc(IDCAP * sizeof(u64));
   PRE = (u64*)big_alloc(IDCAP * sizeof(u64));
@@ -1126,43 +1133,89 @@ static void links_phase(const std::vector<MFile>& lf) {
       }
     }
   });
+  // dense person ids: components first (roots numbered per thread range), then every linked id
+  std::vector<u32> nroot(NT + 1, 0);
+  par_run([&](int t) {
+    u64 lo, hi;
+    range(t, lo, hi);
+    u32 c = 0;
+    for (u64 i = lo; i < hi; i++)
+      if (IDS[i].key.load(std::memory_order_relaxed) != 0 && uf_find((u32)i) == (u32)i) c++;
+    nroot[t + 1] = c;
+  });
+  for (int t = 0; t < NT; t++) nroot[t + 1] += nroot[t];
+  par_run([&](int t) {
+    u64 lo, hi;
+    range(t, lo, hi);
+    u32 k = nroot[t];
+    for (u64 i = lo; i < hi; i++)
+      if (IDS[i].key.load(std::memory_order_relaxed) != 0 && PAR[i].load(std::memory_order_relaxed) == (u32)i) {
+        IDS[i].pid1.store(k + 1, std::memory_order_relaxed);
+        NAMEP[k] = IDP[BEST[i].load(std::memory_order_relaxed)];
+        k++;
+      }
+  });
   par_run([&](int t) {
     u64 lo, hi;
     range(t, lo, hi);
     for (u64 i = lo; i < hi; i++) {
       if (IDS[i].key.load(std::memory_order_relaxed) == 0) continue;
       u32 r = uf_find((u32)i);
-      u32 b = BEST[r].load(std::memory_order_relaxed);
-      IDS[i].pkey = IDS[b].key.load(std::memory_order_relaxed);
+      if (r != (u32)i) IDS[i].pid1.store(IDS[r].pid1.load(std::memory_order_relaxed), std::memory_order_relaxed);
     }
   });
+  PIDCTR.store(nroot[NT]);
   logt("links done");
 }
 
 // ---------------------------------------------------------------- events & clicks parse
 struct PendE {
-  u64 huid, np, packed, ekey;
-  u32 ing, q;
+  u64 huid, np, ekey;
+  u32 ts, xp, ing, q;  // xp: category<<24 | price for purchases, 0xFF<<24 otherwise
 };
 struct PendC {
-  u64 huid, key, idp;
+  u64 huid, idp, unp;
+  u32 ts, camp;
 };
 
-static AI void lookup_person(u64 h, u64& pk, bool& linked) {
+static AI void cpu_relax() {
+#if defined(__x86_64__)
+  _mm_pause();
+#else
+  std::this_thread::yield();
+#endif
+}
+static AI u32 new_pid(TCtx& W) {
+  if (UNLIKELY(W.pid_next == W.pid_end)) {
+    W.pid_next = PIDCTR.fetch_add(1024, std::memory_order_relaxed);
+    W.pid_end = W.pid_next + 1024;
+    if (UNLIKELY((u64)W.pid_end > IDCAP + (u64)NT * 1024)) die("person id space exhausted");
+  }
+  return W.pid_next++;
+}
+// Dense person id of a user id: linked ids were numbered by the links phase; an id seen for the
+// first time here becomes its own person (named by itself).
+static AI u32 person_of(TCtx& W, u64 h, u64 np) {
   u64 j = id_home(h);
-  for (;;) {
-    u64 k = IDS[j].key.load(std::memory_order_relaxed);
-    if (k == h) {
-      pk = IDS[j].pkey;
-      linked = true;
-      return;
-    }
+  for (u64 probes = 0;; probes++) {
+    u64 k = IDS[j].key.load(std::memory_order_acquire);
     if (k == 0) {
-      pk = h;
-      linked = false;
-      return;
+      u64 exp = 0;
+      if (IDS[j].key.compare_exchange_strong(exp, h, std::memory_order_acq_rel)) {
+        const u32 pid = new_pid(W);
+        NAMEP[pid] = np;
+        IDS[j].pid1.store(pid + 1, std::memory_order_release);
+        return pid;
+      }
+      k = exp;
+    }
+    if (k == h) {
+      u32 v;
+      while ((v = IDS[j].pid1.load(std::memory_order_acquire)) == 0) cpu_relax();
+      return v - 1;
     }
     if (++j == IDCAP) j = 0;
+    if (UNLIKELY(probes > IDCAP)) die("id table full");
   }
 }
 
@@ -1170,29 +1223,21 @@ static inline void flushE(TCtx& W, PendE* pe, int n) {
   const u32 tid = (u32)W.id << TSHIFT;
   const u32 lim = 1u << TSHIFT;
   for (int i = 0; i < n; i++) {
-    u64 pk;
-    bool linked;
-    lookup_person(pe[i].huid, pk, linked);
-    u32 p = (u32)(pk >> (64 - PBITS));
-    if (!linked) {
-      u64& c = W.ncache[(pk >> 20) & 4095];
-      if (c != pk) {
-        c = pk;
-        W.ns.push(p, {pk, pe[i].np}, W.na);
-      }
-    }
-    u32 idx = W.ps.push(p, {pk, pe[i].packed}, W.pa);
+    const u32 pid = person_of(W, pe[i].huid, pe[i].np);
+    const u32 p = pid & PMASK;
+    const u32 idx = W.ps.push(p, {pid, pe[i].ts}, W.pa);
     if (UNLIKELY(idx >= lim - 1)) die("too many records per thread");
+    if (UNLIKELY((pe[i].xp >> 24) != 0xFF)) {
+      const u32 b = idx / BLK;
+      W.us.push(p, {pid, pe[i].ts, pe[i].xp, W.pa.ord[b] * BLK + idx % BLK}, W.ua);
+    }
     W.es.push(pe[i].q, {pe[i].ekey, pe[i].ing, tid | idx}, W.ea);
   }
 }
 static inline void flushC(TCtx& W, PendC* pc, int n) {
   for (int i = 0; i < n; i++) {
-    u64 pk;
-    bool linked;
-    lookup_person(pc[i].huid, pk, linked);
-    u32 p = (u32)(pk >> (64 - PBITS));
-    W.cs.push(p, {pk, pc[i].key, pc[i].idp}, W.ca);
+    const u32 pid = person_of(W, pc[i].huid, pc[i].unp);
+    W.cs.push(pid & PMASK, {pid, pc[i].ts, pc[i].camp, 0, pc[i].idp}, W.ca);
   }
 }
 
@@ -1254,7 +1299,8 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
     pd.huid = hstr(fl[1].p, fl[1].n);
     __builtin_prefetch(&IDS[id_home(pd.huid)]);
     pd.np = encp(fl[1].p, fl[1].n);
-    pd.packed = ((u64)(u32)(ts - WS) << 32) | ((u64)X << 24) | price;
+    pd.ts = (u32)(ts - WS);
+    pd.xp = (X << 24) | price;
     pd.ekey = ekey;
     pd.ing = ing;
     pd.q = q;
@@ -1279,8 +1325,10 @@ static void clicks_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
     PendC& pd = pend[npd++];
     pd.huid = hstr(fl[1].p, fl[1].n);
     __builtin_prefetch(&IDS[id_home(pd.huid)]);
-    pd.key = ((u64)(u32)(ts - CWS) << 32) | (u32)c;
+    pd.ts = (u32)(ts - CWS);
+    pd.camp = (u32)c;
     pd.idp = encp(fl[0].p, fl[0].n);
+    pd.unp = encp(fl[1].p, fl[1].n);
     if (npd == 16) {
       flushC(W, pend, npd);
       npd = 0;
@@ -1398,90 +1446,95 @@ static inline void sort_ck(CK* a, u32 n) {
   std::sort(a, a + n, [](const CK& x, const CK& y) { return x.key < y.key; });
 }
 
-static inline u64 resolve_name(u64 pk) {
-  u64 j = id_home(pk);
-  for (;;) {
-    u64 k = IDS[j].key.load(std::memory_order_relaxed);
-    if (k == pk) return IDP[j];
-    if (k == 0) die("name not found");
-    if (++j == IDCAP) j = 0;
-  }
-}
-
-static void process_person(TCtx& W, Pers& P, u64* ev, CK* ck) {
-  const u32 n = P.cnt, m = P.ccnt;  // ev in bucket order, ck sorted by ts
+// One person: ev = event times in 2^20-ms bucket order, ck = clicks sorted by time,
+// pu = purchases (ts<<32 | category<<24 | price), unordered.
+static void process_person(TCtx& W, u64 nameref, const u32* ev, u32 n, const CK* ck, u32 m, u64* pu, u32 npu) {
   W.s_start.ensure(n);
   W.s_day.ensure(n);
   W.s_rev.ensure(n);
+  W.s_cnt.ensure(n);
   u32* ss = W.s_start.p;
   u16* sd = W.s_day.p;
   u64* sr = W.s_rev.p;
-  const u64 name = P.np;  // arena ref
+  u32* sc = W.s_cnt.p;
+  // sessions: a boundary can only fall between buckets (bucket < GAP)
   u32 ns = 0, cur_max = 0;
-  i32 cur_day = -1;
-  u32 d_sess = 0, d_ev = 0;
-  u64 d_rev = 0;
-  auto emit = [&]() {
-    i16 topc = -1;
-    if (d_rev > 0) {
-      u64 best = 0;
-      for (u32 c : W.cattouch) {
-        u64 v = W.catrev[c];
-        if (v > best || (v == best && (i16)c < topc)) {
-          best = v;
-          topc = (i16)c;
-        }
-        W.catrev[c] = 0;
-      }
-      W.cattouch.clear();
+  for (u32 k = 0; k < n;) {
+    const u32 b = ev[k] >> 20;
+    u32 ke = k, bmin = 0xFFFFFFFFu, bmax = 0;
+    do {
+      const u32 ts = ev[ke];
+      bmin = ts < bmin ? ts : bmin;
+      bmax = ts > bmax ? ts : bmax;
+      ke++;
+    } while (ke < n && (ev[ke] >> 20) == b);
+    if (ns == 0 || bmin - cur_max > GAP) {
+      ss[ns] = bmin;
+      sd[ns] = (u16)((WSOFF + bmin) / (u64)DAYMS);
+      sr[ns] = 0;
+      sc[ns] = 0;
+      ns++;
     }
-    W.o_name.push_back(name);
-    W.o_day.push_back((i32)(DAY0 + cur_day));
+    cur_max = bmax > cur_max ? bmax : cur_max;
+    sc[ns - 1] += ke - k;
+    k = ke;
+  }
+  // purchases -> their session (the last session starting at or before them)
+  u64* pd = nullptr;
+  if (npu) {
+    W.pday.ensure(npu);
+    pd = W.pday.p;
+    for (u32 i = 0; i < npu; i++) {
+      const u32 ts = (u32)(pu[i] >> 32), cp = (u32)pu[i];
+      const u32 s = (u32)(std::upper_bound(ss, ss + ns, ts) - ss) - 1;
+      sr[s] += cp & 0xFFFFFF;
+      pd[i] = ((u64)sd[s] << 40) | ((u64)(cp >> 24) << 32) | (cp & 0xFFFFFF);
+    }
+    if (npu <= 24) {
+      for (u32 i = 1; i < npu; i++) {
+        u64 v = pd[i];
+        u32 j = i;
+        while (j > 0 && pd[j - 1] > v) {
+          pd[j] = pd[j - 1];
+          j--;
+        }
+        pd[j] = v;
+      }
+    } else
+      std::sort(pd, pd + npu);
+  }
+  // user_daily rows: one per start day
+  u32 pi = 0;
+  for (u32 s = 0; s < ns;) {
+    const u16 day = sd[s];
+    u32 d_sess = 0, d_ev = 0;
+    u64 d_rev = 0;
+    while (s < ns && sd[s] == day) {
+      d_sess++;
+      d_ev += sc[s];
+      d_rev += sr[s];
+      s++;
+    }
+    i16 topc = -1;
+    if (d_rev) {
+      u64 best = 0;
+      while (pi < npu && (pd[pi] >> 40) == day) {
+        const u32 cat = (u32)(pd[pi] >> 32) & 0xFF;
+        u64 sum = 0;
+        while (pi < npu && (pd[pi] >> 32) == (((u64)day << 8) | cat)) sum += pd[pi++] & 0xFFFFFF;
+        if (sum > best) {  // categories ascend, so ties keep the byte-wise smallest
+          best = sum;
+          topc = (i16)cat;
+        }
+      }
+    }
+    W.o_name.push_back(nameref);
+    W.o_day.push_back((i32)(DAY0 + day));
     W.o_sess.push_back((i32)d_sess);
     W.o_ev.push_back((i32)d_ev);
     W.o_rev.push_back((i64)d_rev);
     W.o_cat.push_back(topc);
-  };
-  // events are grouped by 2^20-ms bucket (< GAP), unordered inside a bucket: a session boundary can
-  // only fall between buckets, decided by min(next bucket) - max(so far) > GAP.
-  for (u32 k = 0; k < n;) {
-    const u32 b = (u32)(ev[k] >> 52);
-    u32 ke = k, bmin = 0xFFFFFFFFu, bmax = 0;
-    do {
-      u32 ts = (u32)(ev[ke] >> 32);
-      bmin = ts < bmin ? ts : bmin;
-      bmax = ts > bmax ? ts : bmax;
-      ke++;
-    } while (ke < n && (u32)(ev[ke] >> 52) == b);
-    if (ns == 0 || bmin - cur_max > GAP) {
-      i32 day = (i32)((WSOFF + bmin) / (u64)DAYMS);
-      if (day != cur_day) {
-        if (cur_day >= 0) emit();
-        cur_day = day;
-        d_sess = d_ev = 0;
-        d_rev = 0;
-      }
-      d_sess++;
-      ss[ns] = bmin;
-      sd[ns] = (u16)day;
-      sr[ns] = 0;
-      ns++;
-    }
-    cur_max = bmax > cur_max ? bmax : cur_max;
-    d_ev += ke - k;
-    for (; k < ke; k++) {
-      u64 x = ev[k];
-      u32 X = (u32)(x >> 24) & 0xFF;
-      if (X != 0xFF) {
-        u32 pr = (u32)(x & 0xFFFFFF);
-        sr[ns - 1] += pr;
-        d_rev += pr;
-        if (W.catrev[X] == 0) W.cattouch.push_back(X);
-        W.catrev[X] += pr;
-      }
-    }
   }
-  if (cur_day >= 0) emit();
 
   // attribution
   const u32 org = (u32)NC;
@@ -1564,52 +1617,17 @@ static void process_person(TCtx& W, Pers& P, u64* ev, CK* ck) {
 
 static void person_partition(TCtx& W, u32 p) {
   double tg0 = nowd();
-  size_t nrec = 0, ncl = 0;
+  size_t nrec = 0, ncl = 0, nup = 0;
   for (int t = 0; t < NT; t++) {
     nrec += TC[t].ps.count(p);
     ncl += TC[t].cs.count(p);
+    nup += TC[t].us.count(p);
   }
   if (nrec == 0) return;
-  size_t cap = 64;
-  while (cap < nrec / 4 + 16) cap <<= 1;
-  W.ptk.ensure(cap);
-  W.ptv.ensure(cap);
-  u64* tk = W.ptk.p;
-  u32* tv = W.ptv.p;
-  memset(tk, 0, cap * sizeof(u64));
-  u64 mask = cap - 1;
-  std::vector<Pers>& PS = W.persons;
-  PS.clear();
-  W.lp_of.ensure(nrec);
-  W.tmp64.ensure(nrec);
-  u32* lpo = W.lp_of.p;
-  u64* tmp = W.tmp64.p;
-  size_t k = 0;
-  u32 bcnt[4096];
-  memset(bcnt, 0, sizeof bcnt);
-  auto grow = [&]() {
-    size_t nc = cap * 2;
-    u64* nk = (u64*)malloc(nc * sizeof(u64));
-    u32* nv = (u32*)malloc(nc * sizeof(u32));
-    memset(nk, 0, nc * sizeof(u64));
-    u64 nm = nc - 1;
-    for (size_t i = 0; i < cap; i++)
-      if (tk[i]) {
-        u64 j = (tk[i] >> 20) & nm;
-        while (nk[j]) j = (j + 1) & nm;
-        nk[j] = tk[i];
-        nv[j] = tv[i];
-      }
-    free(W.ptk.p);
-    free(W.ptv.p);
-    W.ptk.p = nk;
-    W.ptv.p = nv;
-    W.ptk.cap = W.ptv.cap = nc;
-    tk = nk;
-    tv = nv;
-    cap = nc;
-    mask = nm;
-  };
+  const u32 nloc = (PIDMAX >> PBITS) + 1;
+  W.lps.ensure(nloc);
+  LPS* L = W.lps.p;
+  memset(L, 0, (size_t)nloc * sizeof(LPS));
   // dead (deduplicated-away) records: bitmap over the partition's records in thread-major order
   u64 toff[65];
   toff[0] = 0;
@@ -1622,95 +1640,64 @@ static void person_partition(TCtx& W, u32 p) {
       const u64 g = toff[kv >> 32] + (u32)kv;
       dead[g >> 6] |= 1ULL << (g & 63);
     }
+  W.tts.ensure(nrec);
+  W.tlp.ensure(nrec);
+  u32* tts = W.tts.p;
+  u32* tlp = W.tlp.p;
+  u32 bcnt[4096];
+  memset(bcnt, 0, sizeof bcnt);
+  size_t k = 0;
   u64 gi = 0;
   for (int t = 0; t < NT; t++) {
     auto st = TC[t].ps.view(p);
     for (size_t b = 0; b < st.blocks.size(); b++) {
       const PRec* r = TC[t].pa.blk(st.blocks[b]);
-      u32 cnt = st.bcount(b);
+      const u32 cnt = st.bcount(b);
       for (u32 i = 0; i < cnt; i++, gi++) {
-        const PRec& x = r[i];
         if (UNLIKELY((dead[gi >> 6] >> (gi & 63)) & 1)) continue;
-        u64 j = (x.pk >> 20) & mask;
-        u32 lp;
-        for (;;) {
-          u64 kk = tk[j];
-          if (kk == x.pk) {
-            lp = tv[j];
-            break;
-          }
-          if (kk == 0) {
-            lp = (u32)PS.size();
-            tk[j] = x.pk;
-            tv[j] = lp;
-            PS.push_back({x.pk, 0, 0, 0, 0, 0});
-            if (PS.size() * 2 > cap) grow();
-            break;
-          }
-          j = (j + 1) & mask;
-        }
-        Pers& P = PS[lp];
-        P.cnt++;
-        lpo[k] = lp;
-        tmp[k] = x.packed;
-        bcnt[x.packed >> 52]++;
+        const u32 lp = r[i].pid >> PBITS, ts = r[i].ts;
+        L[lp].n++;
+        tts[k] = ts;
+        tlp[k] = lp;
+        bcnt[ts >> 20]++;
         k++;
       }
     }
   }
-  size_t live = k;
-  for (int t = 0; t < NT; t++) {
-    auto st = TC[t].ns.view(p);
-    for (size_t b = 0; b < st.blocks.size(); b++) {
-      const NRec* r = TC[t].na.blk(st.blocks[b]);
-      u32 cnt = st.bcount(b);
-      for (u32 i = 0; i < cnt; i++) {
-        u64 j = (r[i].pk >> 20) & mask;
-        for (;;) {
-          u64 kk = tk[j];
-          if (kk == r[i].pk) {
-            PS[tv[j]].np = r[i].np;
-            break;
-          }
-          if (kk == 0) break;
-          j = (j + 1) & mask;
-        }
-      }
-    }
-  }
-  double tg1 = nowd();
+  const size_t live = k;
+  // active persons, event offsets
+  std::vector<u32>& act = W.act;
+  act.clear();
   u32 off = 0;
-  for (Pers& P : PS) {
-    P.off = off;
-    off += P.cnt;
-    P.cnt = 0;
-  }
-  W.ev.ensure(live);
-  u64* ev = W.ev.p;
+  for (u32 lp = 0; lp < nloc; lp++)
+    if (L[lp].n) {
+      act.push_back(lp);
+      L[lp].fill = off;
+      off += L[lp].n;
+    }
+  double tg1 = nowd();
+  W.ev.ensure(live + 1);
+  u32* ev = W.ev.p;
   {
-    // stable LSD: first by 2^20-ms bucket (12 bits of ts), then by person
-    W.radtmp.ensure(live);
-    W.lp2.ensure(live);
-    u64* t2 = W.radtmp.p;
-    u32* l2 = W.lp2.p;
-    u32* cnt = bcnt;
+    W.t2.ensure(live + 1);
+    W.l2.ensure(live + 1);
+    u32* t2 = W.t2.p;
+    u32* l2 = W.l2.p;
     u32 sum = 0;
     for (int i = 0; i < 4096; i++) {
-      u32 c = cnt[i];
-      cnt[i] = sum;
+      u32 c = bcnt[i];
+      bcnt[i] = sum;
       sum += c;
     }
     for (size_t i = 0; i < live; i++) {
-      u32 d = cnt[tmp[i] >> 52]++;
-      t2[d] = tmp[i];
-      l2[d] = lpo[i];
+      u32 d = bcnt[tts[i] >> 20]++;
+      t2[d] = tts[i];
+      l2[d] = tlp[i];
     }
-    for (size_t i = 0; i < live; i++) {
-      Pers& P = PS[l2[i]];
-      ev[P.off + P.cnt++] = t2[i];
-    }
+    for (size_t i = 0; i < live; i++) ev[L[l2[i]].fill++] = t2[i];
+    for (u32 lp : act) L[lp].fill -= L[lp].n;  // back to the start offset
   }
-  // clicks
+  // clicks of persons with events
   W.clp.ensure(ncl + 1);
   W.cktmp.ensure(ncl + 1);
   u32* clp = W.clp.p;
@@ -1720,31 +1707,22 @@ static void person_partition(TCtx& W, u32 p) {
     auto st = TC[t].cs.view(p);
     for (size_t b = 0; b < st.blocks.size(); b++) {
       const CRec* r = TC[t].ca.blk(st.blocks[b]);
-      u32 cnt = st.bcount(b);
+      const u32 cnt = st.bcount(b);
       for (u32 i = 0; i < cnt; i++) {
-        const CRec& x = r[i];
-        u64 j = (x.pk >> 20) & mask;
-        for (;;) {
-          u64 kk = tk[j];
-          if (kk == x.pk) {
-            u32 lp = tv[j];
-            PS[lp].ccnt++;
-            clp[kc] = lp;
-            ckt[kc] = {x.key, x.idp};
-            kc++;
-            break;
-          }
-          if (kk == 0) break;
-          j = (j + 1) & mask;
-        }
+        const u32 lp = r[i].pid >> PBITS;
+        if (!L[lp].n) continue;
+        L[lp].ccnt++;
+        clp[kc] = lp;
+        ckt[kc] = {((u64)r[i].ts << 32) | r[i].camp, r[i].idp};
+        kc++;
       }
     }
   }
   u32 coff = 0;
-  for (Pers& P : PS) {
-    P.coff = coff;
-    coff += P.ccnt;
-    P.ccnt = 0;
+  for (u32 lp : act) {
+    L[lp].coff = coff;
+    coff += L[lp].ccnt;
+    L[lp].ccnt = 0;
   }
   W.ck.ensure(kc + 1);
   CK* ck = W.ck.p;
@@ -1753,7 +1731,7 @@ static void person_partition(TCtx& W, u32 p) {
     W.clp2.ensure(kc + 1);
     CK* a = ckt;
     u32* la = clp;
-    CK* b = W.cktmp2.p;
+    CK* bb = W.cktmp2.p;
     u32* lb = W.clp2.p;
     static const int SH[3] = {32, 43, 54};
     static const u32 MK[3] = {2047, 2047, 1023};
@@ -1771,43 +1749,70 @@ static void person_partition(TCtx& W, u32 p) {
       }
       for (size_t i = 0; i < kc; i++) {
         u32 d = cnt[(a[i].key >> sh) & mk]++;
-        b[d] = a[i];
+        bb[d] = a[i];
         lb[d] = la[i];
       }
-      std::swap(a, b);
+      std::swap(a, bb);
       std::swap(la, lb);
     }
     for (size_t i = 0; i < kc; i++) {
-      Pers& P = PS[la[i]];
+      LPS& P = L[la[i]];
       ck[P.coff + P.ccnt++] = a[i];
     }
   }
-  double tg2 = nowd();
-  // names: copy each person's name once into the thread arena (prefetched)
-  {
-    const size_t NP = PS.size();
-    const size_t D = 32;
-    for (size_t i = 0; i < NP; i++) {
-      if (i + D < NP) {
-        const Pers& Q = PS[i + D];
-        if (Q.np)
-          __builtin_prefetch(decp(Q.np));
-        else
-          __builtin_prefetch(&IDS[id_home(Q.pk)]);
+  // purchases (skip copies that lost deduplication)
+  W.utmp.ensure(nup + 1);
+  W.ulp.ensure(nup + 1);
+  u64* ut = W.utmp.p;
+  u32* ul = W.ulp.p;
+  size_t ku = 0;
+  for (int t = 0; t < NT; t++) {
+    auto st = TC[t].us.view(p);
+    for (size_t b = 0; b < st.blocks.size(); b++) {
+      const URec* r = TC[t].ua.blk(st.blocks[b]);
+      const u32 cnt = st.bcount(b);
+      for (u32 i = 0; i < cnt; i++) {
+        const u64 g = toff[t] + r[i].ploc;
+        if ((dead[g >> 6] >> (g & 63)) & 1) continue;
+        const u32 lp = r[i].pid >> PBITS;
+        L[lp].ucnt++;
+        ut[ku] = ((u64)r[i].ts << 32) | r[i].cp;
+        ul[ku] = lp;
+        ku++;
       }
-      Pers& P = PS[i];
-      u64 np = P.np ? P.np : resolve_name(P.pk);
-      const char* sp = decp(np);
-      u32 sn = decn(np);
-      u64 off = W.names.size();
-      W.names.insert(W.names.end(), sp, sp + sn);
-      P.np = (off << 16) | sn;
     }
   }
+  u32 uoff = 0;
+  for (u32 lp : act) {
+    L[lp].uoff = uoff;
+    uoff += L[lp].ucnt;
+    L[lp].ucnt = 0;
+  }
+  W.uarr.ensure(ku + 1);
+  u64* ua = W.uarr.p;
+  for (size_t i = 0; i < ku; i++) {
+    LPS& P = L[ul[i]];
+    ua[P.uoff + P.ucnt++] = ut[i];
+  }
+  double tg2 = nowd();
+  // names, then each person
+  const size_t NP = act.size();
+  for (size_t i = 0; i < NP; i++) {
+    if (i + 32 < NP) __builtin_prefetch(decp(NAMEP[(act[i + 32] << PBITS) | p]));
+    if (i + 64 < NP) __builtin_prefetch(&NAMEP[(act[i + 64] << PBITS) | p]);
+    const u32 lp = act[i];
+    const u64 np = NAMEP[(lp << PBITS) | p];
+    const char* sp = decp(np);
+    const u32 sn = decn(np);
+    const u64 nref = ((u64)W.names.size() << 16) | sn;
+    W.names.insert(W.names.end(), sp, sp + sn);
+    const LPS& P = L[lp];
+    process_person(W, nref, ev + P.fill, P.n, ck + P.coff, P.ccnt, ua + P.uoff, P.ucnt);
+  }
   double tg3 = nowd();
-  for (Pers& P : PS) process_person(W, P, ev + P.off, ck + P.coff);
-  double tg4 = nowd();
-  W.tm[0] += tg1 - tg0; W.tm[1] += tg2 - tg1; W.tm[2] += tg3 - tg2; W.tm[3] += tg4 - tg3;
+  W.tm[0] += tg1 - tg0;
+  W.tm[1] += tg2 - tg1;
+  W.tm[3] += tg3 - tg2;
 }
 
 // ---------------------------------------------------------------- parquet writer
@@ -2202,8 +2207,9 @@ int main(int argc, char** argv) {
       });
     for (auto& x : th) x.join();
   }
-  u64 evbytes = 0;
+  u64 evbytes = 0, ckbytes = 0;
   for (auto& f : evf) evbytes += f.n;
+  for (auto& f : ckf) ckbytes += f.n;
   {
     double est = (double)evbytes / 85.0;
 #ifndef PDIV
@@ -2214,6 +2220,7 @@ int main(int argc, char** argv) {
 #endif
     int pb = (int)std::lround(std::log2(std::max(1.0, est / PDIV)));
     PBITS = std::min(11, std::max(4, pb));
+    PMASK = (1u << PBITS) - 1;
     int qb = (int)std::lround(std::log2(std::max(1.0, est / QDIV)));
     QBITS = std::min(12, std::max(4, qb));
   }
@@ -2222,13 +2229,13 @@ int main(int argc, char** argv) {
     TC[t].id = t;
     TC[t].ps.resize(1u << PBITS);
     TC[t].kills.resize(1u << PBITS);
-    TC[t].ns.resize(1u << PBITS);
+    TC[t].us.resize(1u << PBITS);
     TC[t].cs.resize(1u << PBITS);
     TC[t].es.resize(1u << QBITS);
   }
   logt("mapped");
 
-  links_phase(lkf);
+  links_phase(lkf, (evbytes / 85 + ckbytes / 45) / 16 + 4096);
   small_thr.join();
   logt("small tables joined");
 
@@ -2259,6 +2266,7 @@ int main(int argc, char** argv) {
       store_fence();
     });
   }
+  PIDMAX = PIDCTR.load();
   logt("parsed events+clicks");
   if (getenv("PIPE_STOP_PARSE")) { fprintf(stderr, "x %llu\n", (unsigned long long)TC[0].n_ev_valid); _exit(0); }
 
@@ -2414,7 +2422,7 @@ int main(int argc, char** argv) {
         if (W.pa.chunks[c]) add(W.pa.chunks[c], sizeof(PRec) * (size_t)BLK * CHB);
         if (W.ea.chunks[c]) add(W.ea.chunks[c], sizeof(ERec) * (size_t)BLK * CHB);
         if (W.ca.chunks[c]) add(W.ca.chunks[c], sizeof(CRec) * (size_t)BLK * CHB);
-        if (W.na.chunks[c]) add(W.na.chunks[c], sizeof(NRec) * (size_t)BLK * CHB);
+        if (W.ua.chunks[c]) add(W.ua.chunks[c], sizeof(URec) * (size_t)BLK * CHB);
       }
     }
     add(IDS, IDCAP * sizeof(IdSlot));
