@@ -37,9 +37,6 @@ typedef int64_t i64;
 #define LIKELY(x) __builtin_expect(!!(x), 1)
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
 #define AI __attribute__((always_inline)) inline
-#if !defined(NOLINESIMD) && !defined(LINESIMD)
-#define LINESIMD 1
-#endif
 
 static const i64 DAYMS = 86400000LL;
 static const u32 GAP = 1800000u;
