@@ -1,7 +1,4 @@
+flatfn -DFLATFN
 pfw64 -DPFW=64
-pfw128 -DPFW=128
-pfw256 -DPFW=256
-nocrc -DNOCRC
-pf768 -DINPF=768
-pf1536 -DINPF=1536
-all -DPFW=128 -DNOCRC
+usecrc -DUSECRC
+flatfn_pfw64 -DFLATFN -DPFW=64

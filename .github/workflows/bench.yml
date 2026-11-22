@@ -109,6 +109,14 @@ jobs:
             echo "== perf by srcline (top)"; $PERF report -i /tmp/perf.data --no-children --sort srcline --stdio 2>/dev/null | grep -v '^#' | grep -v '^$' | head -120; } | tee -a $R
           for b in $(cat /tmp/bins2); do rm -rf /tmp/out; $PERF stat -x, -e instructions:u,cycles:u,branch-misses:u,instructions:k,cycles:k -o /tmp/ps_$b.txt env NCPU=4 /tmp/$b /tmp/p20 /tmp/out >/dev/null 2>&1
             echo "PSTAT $b $(grep -v '^#' /tmp/ps_$b.txt | grep -v '^$' | awk -F, '{printf "%s=%.0fM ", $3, $1/1e6}')"; done | tee -a $R
+      - name: Callgrind (instruction counts per source line)
+        if: matrix.job == 1
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y -q valgrind >/dev/null 2>&1
+          rm -rf /tmp/cgout; NCPU=2 timeout 900 valgrind --tool=callgrind --dump-instr=no --callgrind-out-file=/tmp/cg.out /tmp/cand /tmp/dev /tmp/cgout > /dev/null 2>&1
+          C=results/cg-$(git rev-parse --short HEAD).txt
+          { callgrind_annotate /tmp/cg.out 2>/dev/null | head -60; echo "== annotated source"; callgrind_annotate --auto=yes --show-percs=no /tmp/cg.out $GITHUB_WORKSPACE/src/pipeline.cpp 2>/dev/null; } > $C; wc -l $C
       - name: Publish
         if: always()
         run: |

@@ -455,6 +455,82 @@ static AI u64 bits_get(const u64* arr, u32 pos) {
 
 static inline u64 align_start(const MFile& f, u64 s);
 
+// Comma and newline positions (with quote flags) of the window [wb, we), from line start ls.
+#ifdef FLATFN
+__attribute__((noinline))
+#else
+AI
+#endif
+static void flatten_window(const char* base, u64 wb, u64 we, u64 ls, Flat& FL, u32& nc_out, u32& nn_out) {
+  u32 nc = 0, nn = 0, cq = 0;
+  u64 cm, nm, qm;
+  block_masks3(base + wb, cm, nm, qm);
+  {
+    const u64 keep = ~0ULL << (ls - wb);
+    cm &= keep;
+    nm &= keep;
+    qm &= keep;
+  }
+  u64 qprev = 0;
+  FL.cqa[0] = FL.cqb[0] = 0;
+  for (u64 b = wb; b < we; b += 64) {
+    u64 ncm, nnm, nqm;
+    block_masks3(base + b + 64, ncm, nnm, nqm);  // lookahead (padding keeps this in bounds)
+#if INPF > 0
+    __builtin_prefetch(base + b + INPF);  // hardware prefetch stops at page boundaries
+#endif
+    const u64 qa = (qm >> 1) | (nqm << 63);
+    const u64 qb = (qm << 1) | qprev;
+    const u32 off = (u32)(b - wb);
+    {
+      const u32 cnt = (u32)__builtin_popcountll(cm);
+      bits_append(FL.cqa, nc, pext64(qa, cm));
+      bits_append(FL.cqb, nc, pext64(qb, cm));
+      u32* o = FL.com + nc;
+      u64 t = cm;
+      for (int i = 0; i < CUNROLL; i++) {
+        o[i] = off + ctz_any(t);
+        t &= t - 1;
+      }
+      if (UNLIKELY(cnt > CUNROLL)) {
+        for (u32 i = CUNROLL; i < cnt; i++) {
+          o[i] = off + ctz_any(t);
+          t &= t - 1;
+        }
+      }
+      nc += cnt;
+    }
+    {
+      const u32 cnt = (u32)__builtin_popcountll(nm);
+      u32* o = FL.nl + nn;
+      u32* oq = FL.nlq + nn;
+      u64 t = nm;
+      for (int i = 0; i < NUNROLL; i++) {
+        const u32 bit = ctz_any(t) & 63;
+        o[i] = (off + bit) | (u32)(((qa >> bit) & 1) << 30) | (u32)(((qb >> bit) & 1) << 31);
+        oq[i] = cq + (u32)__builtin_popcountll(qm & ((1ULL << bit) - 1));
+        t &= t - 1;
+      }
+      if (UNLIKELY(cnt > NUNROLL)) {
+        for (u32 i = NUNROLL; i < cnt; i++) {
+          u32 bit = (u32)__builtin_ctzll(t);
+          o[i] = (off + bit) | (u32)(((qa >> bit) & 1) << 30) | (u32)(((qb >> bit) & 1) << 31);
+          oq[i] = cq + (u32)__builtin_popcountll(qm & ((1ULL << bit) - 1));
+          t &= t - 1;
+        }
+      }
+      nn += cnt;
+    }
+    cq += (u32)__builtin_popcountll(qm);
+    qprev = qm >> 63;
+    cm = ncm;
+    nm = nnm;
+    qm = nqm;
+  }
+  nc_out = nc;
+  nn_out = nn;
+}
+
 // Calls on_line(Fld*) for every well-formed NF-field line starting in [s, e) of file f.
 // Quote rules come from bit masks: a field is quoted iff a quote follows its opening separator;
 // it must then end with a quote and be >= 2 long, and the line's quote count must be 2 x quoted fields.
@@ -467,71 +543,8 @@ static AI void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line) {
   while (ls < e) {
     const u64 wb = ls & ~(u64)63;
     const u64 we = std::min(lim, wb + FLAT_W);
-    u32 nc = 0, nn = 0, cq = 0;
-    u64 cm, nm, qm;
-    block_masks3(base + wb, cm, nm, qm);
-    {
-      const u64 keep = ~0ULL << (ls - wb);
-      cm &= keep;
-      nm &= keep;
-      qm &= keep;
-    }
-    u64 qprev = 0;
-    FL.cqa[0] = FL.cqb[0] = 0;
-    for (u64 b = wb; b < we; b += 64) {
-      u64 ncm, nnm, nqm;
-      block_masks3(base + b + 64, ncm, nnm, nqm);  // lookahead (padding keeps this in bounds)
-#if INPF > 0
-      __builtin_prefetch(base + b + INPF);  // hardware prefetch stops at page boundaries
-#endif
-      const u64 qa = (qm >> 1) | (nqm << 63);
-      const u64 qb = (qm << 1) | qprev;
-      const u32 off = (u32)(b - wb);
-      {
-        const u32 cnt = (u32)__builtin_popcountll(cm);
-        bits_append(FL.cqa, nc, pext64(qa, cm));
-        bits_append(FL.cqb, nc, pext64(qb, cm));
-        u32* o = FL.com + nc;
-        u64 t = cm;
-        for (int i = 0; i < CUNROLL; i++) {
-          o[i] = off + ctz_any(t);
-          t &= t - 1;
-        }
-        if (UNLIKELY(cnt > CUNROLL)) {
-          for (u32 i = CUNROLL; i < cnt; i++) {
-            o[i] = off + ctz_any(t);
-            t &= t - 1;
-          }
-        }
-        nc += cnt;
-      }
-      {
-        const u32 cnt = (u32)__builtin_popcountll(nm);
-        u32* o = FL.nl + nn;
-        u32* oq = FL.nlq + nn;
-        u64 t = nm;
-        for (int i = 0; i < NUNROLL; i++) {
-          const u32 bit = ctz_any(t) & 63;
-          o[i] = (off + bit) | (u32)(((qa >> bit) & 1) << 30) | (u32)(((qb >> bit) & 1) << 31);
-          oq[i] = cq + (u32)__builtin_popcountll(qm & ((1ULL << bit) - 1));
-          t &= t - 1;
-        }
-        if (UNLIKELY(cnt > NUNROLL)) {
-          for (u32 i = NUNROLL; i < cnt; i++) {
-            u32 bit = (u32)__builtin_ctzll(t);
-            o[i] = (off + bit) | (u32)(((qa >> bit) & 1) << 30) | (u32)(((qb >> bit) & 1) << 31);
-            oq[i] = cq + (u32)__builtin_popcountll(qm & ((1ULL << bit) - 1));
-            t &= t - 1;
-          }
-        }
-        nn += cnt;
-      }
-      cq += (u32)__builtin_popcountll(qm);
-      qprev = qm >> 63;
-      cm = ncm;
-      nm = nnm;
-      qm = nqm;
-    }
+    u32 nc, nn;
+    flatten_window(base, wb, we, ls, FL, nc, nn);
     if (UNLIKELY(nn == 0)) {
       // a line longer than the window: fall back to the incremental scanner for it
       Scanner sc;
@@ -1532,7 +1545,7 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
     W.n_ev_valid += fl[2].n + fl[1].n; return;
 #endif
     u64 h1 = hstr(fl[0].p, fl[0].n);
-#ifdef NOCRC
+#ifndef USECRC
     const u32 crc = 0;
 #else
     u32 crc = crcstr(fl[0].p, fl[0].n);
@@ -1541,7 +1554,7 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
     W.n_ev_valid += h1 + crc + hstr(fl[1].p, fl[1].n); return;
 #endif
     u32 q = (u32)(h1 >> (64 - QBITS));
-#ifdef NOCRC
+#ifndef USECRC
     (void)qmask;
     u64 ekey = (h1 << QBITS) | (h1 >> (64 - QBITS));  // the 64 hash bits, partition bits last
 #else
