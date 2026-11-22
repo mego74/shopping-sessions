@@ -42,8 +42,8 @@ static const i64 DAYMS = 86400000LL;
 static const u32 GAP = 1800000u;
 static const u32 WEEK = 604800000u;
 
-#ifdef PGO_GEN
-extern "C" void __gcov_dump(void);
+#if defined(__linux__)
+extern "C" void __gcov_dump(void) __attribute__((weak));  // present only in profile-instrumented builds
 #endif
 static double T0;
 static double nowd() {
@@ -2756,8 +2756,8 @@ int main(int argc, char** argv) {
   }
 #endif
   fflush(stderr);
-#ifdef PGO_GEN
-  __gcov_dump();  // _exit skips the normal profile write-out
+#if defined(__linux__)
+  if (__gcov_dump) __gcov_dump();  // _exit skips the normal profile write-out
 #endif
   _exit(0);
 }
