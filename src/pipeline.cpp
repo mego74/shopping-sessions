@@ -1845,6 +1845,9 @@ static void events_chunk(TCtx& W, const MFile& f, u64 s, u64 e) {
     pd.ekey = ekey;
     pd.ing = ing;
     pd.q = q;
+#ifdef EQPF
+    __builtin_prefetch(&W.es.hot[q], 1);  // the dedup stream's write head, used when the batch is flushed
+#endif
 #else
     (void)q;
     (void)ekey;

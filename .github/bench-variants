@@ -1,2 +1,3 @@
-oldassist -DOLDASSIST
-ddzero -DDDZERO
+eqpf -DEQPF
+q11 -DQDIV=24000
+eqpf_q11 -DEQPF -DQDIV=24000
