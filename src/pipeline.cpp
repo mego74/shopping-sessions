@@ -438,6 +438,7 @@ struct Flat {
   u32 nlq[FLAT_W + 64];  // quotes in the window before this newline
   u64 cqa[FLAT_W / 64 + 4];  // bit k: comma k is followed by a quote
   u64 cqb[FLAT_W / 64 + 4];  // bit k: comma k is preceded by a quote
+  u8 cfl[FLAT_W + 128];      // byte k: bit 0 = comma k is followed by a quote, bit 1 = preceded by one
 };
 
 static AI u64 pext64(u64 v, u64 m) {
@@ -449,6 +450,25 @@ static AI u64 pext64(u64 v, u64 m) {
     if (v & m & (0 - m)) r |= 1ULL << k;
   return r;
 #endif
+}
+static AI u64 pdep64(u64 v, u64 m) {
+#if defined(__BMI2__)
+  return _pdep_u64(v, m);
+#else
+  u64 r = 0;
+  for (u64 bb = 1; m; bb += bb, m &= m - 1)
+    if (v & bb) r |= m & (0 - m);
+  return r;
+#endif
+}
+// One flag byte per comma (bit 0: quote after, bit 1: quote before), 8 commas per store.
+static AI void flags_store(u8* dst, u64 fa, u64 fb, u32 cnt) {
+  const u64 B0 = 0x0101010101010101ULL;
+  for (u32 k = 0;; k += 8) {
+    const u64 x = pdep64(fa >> k, B0) | pdep64(fb >> k, B0 << 1);
+    memcpy(dst + k, &x, 8);
+    if (LIKELY(k + 8 >= cnt)) break;
+  }
 }
 static AI void bits_append(u64* arr, u32 pos, u64 v) {  // v holds <= 64 bits; bits above pos are zero
   const u32 w = pos >> 6, sh = pos & 63;
@@ -491,8 +511,12 @@ static void flatten_window(const char* base, u64 wb, u64 we, u64 ls, Flat& FL, u
     const u32 off = (u32)(b - wb);
     {
       const u32 cnt = (u32)__builtin_popcountll(cm);
+#ifdef OLDQBITS
       bits_append(FL.cqa, nc, pext64(qa, cm));
       bits_append(FL.cqb, nc, pext64(qb, cm));
+#else
+      flags_store(FL.cfl + nc, pext64(qa, cm), pext64(qb, cm), cnt);
+#endif
       u32* o = FL.com + nc;
       u64 t = cm;
       for (int i = 0; i < CUNROLL; i++) {
@@ -583,8 +607,14 @@ static AI void for_lines(const MFile& f, u64 s, u64 e, Flat& FL, F&& on_line) {
       const bool cnt_ok = (FL.com[ci + NF - 2] < le) & (FL.com[ci + NF - 1] > le);
       if (LIKELY(cnt_ok)) {
         const u32 fmask = (1u << NF) - 1;
+#ifdef OLDQBITS
         const u32 isqm = (u32)((bits_get(FL.cqa, ci) << 1) | lsq) & fmask;
         const u32 endm = ((u32)bits_get(FL.cqb, ci) & ((1u << (NF - 1)) - 1)) | ((nlw >> 31) << (NF - 1));
+#else
+        const u64 f8 = load64((const char*)FL.cfl + ci);
+        const u32 isqm = (u32)((pext64(f8, 0x0101010101010101ULL) << 1) | lsq) & fmask;
+        const u32 endm = ((u32)pext64(f8, 0x0202020202020202ULL) & ((1u << (NF - 1)) - 1)) | ((nlw >> 31) << (NF - 1));
+#endif
         u32 bad = isqm & ~endm;
         const u32 fs = (u32)(ls - wb);
 #if defined(__AVX2__) && !defined(SCALARFIELDS)
