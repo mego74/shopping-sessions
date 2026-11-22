@@ -796,7 +796,7 @@ struct alignas(64) Strm {
   u32 fill = 0;
   inline u32 push_wc(const T& v, Arena<T>& a, T* line, u32 own = 0) {
     static_assert(sizeof(T) == 16, "wc push needs 16-byte records");
-#if !defined(__x86_64__)
+#if !defined(__x86_64__) || defined(NOWC)
     (void)line;
     return push(v, a, own);  // no streaming stores: plain scatter is faster
 #endif
@@ -2117,9 +2117,15 @@ int main(int argc, char** argv) {
   for (auto& f : evf) evbytes += f.n;
   {
     double est = (double)evbytes / 85.0;
-    int pb = (int)std::lround(std::log2(std::max(1.0, est / 30000.0)));
+#ifndef PDIV
+#define PDIV 30000.0
+#endif
+#ifndef QDIV
+#define QDIV 12000.0
+#endif
+    int pb = (int)std::lround(std::log2(std::max(1.0, est / PDIV)));
     PBITS = std::min(11, std::max(4, pb));
-    int qb = (int)std::lround(std::log2(std::max(1.0, est / 12000.0)));
+    int qb = (int)std::lround(std::log2(std::max(1.0, est / QDIV)));
     QBITS = std::min(12, std::max(4, qb));
   }
   TC = new TCtx[NT];
