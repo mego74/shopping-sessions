@@ -869,10 +869,15 @@ static std::atomic<u32> PIDCTR{0};    // next unassigned person id
 static u32 PIDMAX = 0;                // person ids are < PIDMAX after parsing
 static u32 PMASK = 0;
 static IdSlot* IDS = nullptr;
-static u64* IDP = nullptr;            // string ptr per slot
+// links phase: every linked id gets a dense index d (arrays below are indexed by d)
+static u64* IDP = nullptr;            // string ptr
 static u64* PRE = nullptr;            // first 8 bytes of the ID, big-endian (byte-wise order)
 static std::atomic<u32>* PAR = nullptr;
 static std::atomic<u32>* BEST = nullptr;
+static u32* DSLOT = nullptr;          // ID-table slot + 1 (0 = unused index)
+static u32* RPID = nullptr;           // person id of a component root
+static std::atomic<u32> DCTR{0};
+static u64 LCAP = 0;
 static u64 IDCAP = 16;
 static inline u64 id_home(u64 h) { return (u64)(((__uint128_t)h * IDCAP) >> 64); }
 
@@ -1063,7 +1068,6 @@ struct TCtx {
   StreamSet<ERec> es;
   StreamSet<CRec> cs;
   std::vector<LRec> lrecs;
-  std::vector<u32> claimed;  // ID-table slots this thread inserted in the links phase
   // counters
   u64 n_ev_lines = 0, n_ev_valid = 0, n_ck_valid = 0;
   // dedup scratch
@@ -1134,6 +1138,13 @@ static std::vector<Chunk> make_chunks(const std::vector<MFile>& fs, u64 target) 
 }
 
 // ---------------------------------------------------------------- links
+static inline void cpu_relax_l() {
+#if defined(__x86_64__)
+  _mm_pause();
+#else
+  std::this_thread::yield();
+#endif
+}
 static inline u32 uf_find(u32 x) {
   for (;;) {
     u32 p = PAR[x].load(std::memory_order_relaxed);
@@ -1153,22 +1164,37 @@ static inline void uf_unite(u32 a, u32 b) {
     if (PAR[a].compare_exchange_strong(exp, b, std::memory_order_relaxed)) return;
   }
 }
-static inline u32 id_insert(u64 h, u64 ptr, std::vector<u32>& claimed) {
+struct DenseAlloc {
+  u32 next = 0, end = 0;
+};
+// insert a linked id (or find it); returns its dense index
+static inline u32 id_insert(u64 h, u64 ptr, DenseAlloc& da) {
   u64 i = id_home(h);
   for (;;) {
-    u64 k = IDS[i].key.load(std::memory_order_relaxed);
-    if (k == h) return (u32)i;
+    u64 k = IDS[i].key.load(std::memory_order_acquire);
     if (k == 0) {
       u64 exp = 0;
-      if (IDS[i].key.compare_exchange_strong(exp, h, std::memory_order_relaxed)) {
-        IDP[i] = ptr;
-        PRE[i] = __builtin_bswap64(loadp(decp(ptr), decn(ptr) < 8 ? decn(ptr) : 8));
-        PAR[i].store((u32)i, std::memory_order_relaxed);
-        BEST[i].store(INVALID, std::memory_order_relaxed);
-        claimed.push_back((u32)i);
-        return (u32)i;
+      if (IDS[i].key.compare_exchange_strong(exp, h, std::memory_order_acq_rel)) {
+        if (da.next == da.end) {
+          da.next = DCTR.fetch_add(1024, std::memory_order_relaxed);
+          da.end = da.next + 1024;
+          if ((u64)da.end > LCAP) die("link index space exhausted");
+        }
+        const u32 d = da.next++;
+        IDP[d] = ptr;
+        PRE[d] = __builtin_bswap64(loadp(decp(ptr), decn(ptr) < 8 ? decn(ptr) : 8));
+        PAR[d].store(d, std::memory_order_relaxed);
+        BEST[d].store(INVALID, std::memory_order_relaxed);
+        DSLOT[d] = (u32)i + 1;
+        IDS[i].pid1.store(d + 1, std::memory_order_release);
+        return d;
       }
-      if (exp == h) return (u32)i;
+      k = exp;
+    }
+    if (k == h) {
+      u32 v;
+      while ((v = IDS[i].pid1.load(std::memory_order_acquire)) == 0) cpu_relax_l();
+      return v - 1;
     }
     if (++i == IDCAP) i = 0;
   }
@@ -1203,13 +1229,17 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
   IDCAP = std::max<u64>(1024, nl * 3 + extra_ids * 2 + 1024);
   NAMEP = (u64*)big_alloc((IDCAP + (u64)NT * 1024 + 64) * sizeof(u64));
   IDS = (IdSlot*)big_alloc(IDCAP * sizeof(IdSlot));
-  IDP = (u64*)big_alloc(IDCAP * sizeof(u64));
-  PRE = (u64*)big_alloc(IDCAP * sizeof(u64));
-  PAR = (std::atomic<u32>*)big_alloc(IDCAP * sizeof(u32));
-  BEST = (std::atomic<u32>*)big_alloc(IDCAP * sizeof(u32));
+  LCAP = nl * 2 + (u64)NT * 1024 * 2 + 64;
+  IDP = (u64*)big_alloc(LCAP * sizeof(u64));
+  PRE = (u64*)big_alloc(LCAP * sizeof(u64));
+  PAR = (std::atomic<u32>*)big_alloc(LCAP * sizeof(u32));
+  BEST = (std::atomic<u32>*)big_alloc(LCAP * sizeof(u32));
+  DSLOT = (u32*)big_alloc(LCAP * sizeof(u32));
+  RPID = (u32*)big_alloc(LCAP * sizeof(u32));
   logt("links parsed");
   par_run([&](int t) {
     std::vector<LRec>& L = TC[t].lrecs;
+    DenseAlloc da;
     const size_t n = L.size(), D = 12;
     for (size_t i = 0; i < n; i++) {
       if (i + D < n) {
@@ -1217,8 +1247,8 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
         __builtin_prefetch(&IDS[id_home(L[i + D].b)], 1);
       }
       LRec& r = L[i];
-      u32 sa = id_insert(r.a, r.pa, TC[t].claimed);
-      u32 sb = id_insert(r.b, r.pb, TC[t].claimed);
+      u32 sa = id_insert(r.a, r.pa, da);
+      u32 sb = id_insert(r.b, r.pb, da);
       r.a = sa;
       r.b = sb;
     }
@@ -1234,9 +1264,17 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
       if (L[i].a != L[i].b) uf_unite((u32)L[i].a, (u32)L[i].b);
     }
   });
-  // passes below visit only the slots holding linked ids (each thread: the slots it inserted)
+  // passes over the dense index range, split evenly between threads
+  const u32 DN = DCTR.load();
+  auto drange = [&](int t, u32& lo, u32& hi) {
+    lo = (u32)((u64)DN * t / NT);
+    hi = (u32)((u64)DN * (t + 1) / NT);
+  };
   par_run([&](int t) {
-    for (u32 i : TC[t].claimed) {
+    u32 lo, hi;
+    drange(t, lo, hi);
+    for (u32 i = lo; i < hi; i++) {
+      if (!DSLOT[i]) continue;
       u32 r = uf_find(i);
       u32 cur = BEST[r].load(std::memory_order_relaxed);
       for (;;) {
@@ -1248,28 +1286,34 @@ static void links_phase(const std::vector<MFile>& lf, u64 extra_ids) {
       }
     }
   });
-  // dense person ids: components first (roots numbered per thread), then every linked id
+  // dense person ids: components first (roots numbered per thread range), then every linked id
   std::vector<u32> nroot(NT + 1, 0);
   par_run([&](int t) {
+    u32 lo, hi;
+    drange(t, lo, hi);
     u32 c = 0;
-    for (u32 i : TC[t].claimed)
-      if (uf_find(i) == i) c++;
+    for (u32 i = lo; i < hi; i++)
+      if (DSLOT[i] && uf_find(i) == i) c++;
     nroot[t + 1] = c;
   });
   for (int t = 0; t < NT; t++) nroot[t + 1] += nroot[t];
   par_run([&](int t) {
+    u32 lo, hi;
+    drange(t, lo, hi);
     u32 k = nroot[t];
-    for (u32 i : TC[t].claimed)
-      if (PAR[i].load(std::memory_order_relaxed) == i) {
-        IDS[i].pid1.store(k + 1, std::memory_order_relaxed);
+    for (u32 i = lo; i < hi; i++)
+      if (DSLOT[i] && PAR[i].load(std::memory_order_relaxed) == i) {
+        RPID[i] = k;
         NAMEP[k] = IDP[BEST[i].load(std::memory_order_relaxed)];
         k++;
       }
   });
   par_run([&](int t) {
-    for (u32 i : TC[t].claimed) {
-      u32 r = uf_find(i);
-      if (r != i) IDS[i].pid1.store(IDS[r].pid1.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    u32 lo, hi;
+    drange(t, lo, hi);
+    for (u32 i = lo; i < hi; i++) {
+      if (!DSLOT[i]) continue;
+      IDS[DSLOT[i] - 1].pid1.store(RPID[uf_find(i)] + 1, std::memory_order_relaxed);
     }
   });
   PIDCTR.store(nroot[NT]);
