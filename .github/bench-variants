@@ -1,1 +1,4 @@
-clicksort -DCLICKSORT
+oldnames -DOLDNAMES
+norows -DDIAG_NOROWS
+noattr -DDIAG_NOATTR
+noassist -DDIAG_NOASSIST

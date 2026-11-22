@@ -2130,14 +2130,22 @@ static void process_person(TCtx& W, u64 nameref, const u32* ev, u32 n, const CK*
         }
       }
     }
-    W.o_name.push_back(nameref);
-    W.o_day.push_back((i32)(DAY0 + day));
-    W.o_sess.push_back((i32)d_sess);
-    W.o_ev.push_back((i32)d_ev);
-    W.o_rev.push_back((i64)d_rev);
-    W.o_cat.push_back(topc);
+#ifdef DIAG_NOROWS
+    if (nameref == 1)
+#endif
+    {
+      W.o_name.push_back(nameref);
+      W.o_day.push_back((i32)(DAY0 + day));
+      W.o_sess.push_back((i32)d_sess);
+      W.o_ev.push_back((i32)d_ev);
+      W.o_rev.push_back((i64)d_rev);
+      W.o_cat.push_back(topc);
+    }
   }
 
+#ifdef DIAG_NOATTR
+  return;
+#endif
   // attribution
   const u32 org = (u32)NC;
   auto add = [&](u32 c, u32 d, u64 rev) {
@@ -2177,6 +2185,9 @@ static void process_person(TCtx& W, u64 nameref, const u32* ev, u32 n, const CK*
     }
     add(c, sd[s], sr[s]);
   }
+#ifdef DIAG_NOASSIST
+  return;
+#endif
   // assists: union of [t, t+WEEK] per campaign (click base), sessions S = ss+WEEK inside
   W.s_nds.ensure(ns);
   u32* nds = W.s_nds.p;
