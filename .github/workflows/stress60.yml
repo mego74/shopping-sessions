@@ -1,0 +1,52 @@
+name: stress60
+# Final-size check: 60M events, two thread counts, outputs must match and satisfy the table invariants.
+on:
+  push:
+    branches: [stress]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true; df -h /tmp | tail -1
+      - name: Data
+        run: |
+          curl -sSL -o /tmp/gen.zip https://www.joinbuilders.org/buildathon/tracks/shopping-sessions/files/generator.zip
+          cd /tmp && unzip -q gen.zip && cd generator && cargo build --release -q
+          ./target/release/generate --seed 4242 --events 60000000 --clicks 15000000 --output /tmp/f60
+          du -sh /tmp/f60; free -g | head -2
+      - name: Run
+        run: |
+          mkdir -p results; R=results/stress-$(git rev-parse --short HEAD).txt
+          lscpu | grep "Model name" | tee $R
+          g++ -O3 -march=x86-64-v3 -mtune=cascadelake -std=c++17 -pthread -static -o /tmp/p src/pipeline.cpp
+          for n in 4 8; do rm -rf /tmp/o$n; rc=0
+            /usr/bin/time -f "RUN ncpu=$n wall %e user %U sys %S maxrss %MKB" env NCPU=$n PIPE_VERBOSE=1 /tmp/p /tmp/f60 /tmp/o$n 2>/tmp/e$n || rc=$?
+            { echo "exit $rc"; grep -E "ms\]|RUN|rows|FATAL" /tmp/e$n; } | tee -a $R; done
+          pip install -q polars pyarrow >/dev/null 2>&1 || pip install -q --break-system-packages polars pyarrow >/dev/null 2>&1
+          python3 - <<'PY' | tee -a $R
+          import polars as pl
+          u4 = pl.read_parquet("/tmp/o4/user_daily/*.parquet"); u8 = pl.read_parquet("/tmp/o8/user_daily/*.parquet")
+          c4 = pl.read_parquet("/tmp/o4/campaign_daily/*.parquet"); c8 = pl.read_parquet("/tmp/o8/campaign_daily/*.parquet")
+          same_u = u4.sort(u4.columns).equals(u8.sort(u8.columns)); same_c = c4.sort(c4.columns).equals(c8.sort(c8.columns))
+          print("rows user_daily", u4.height, "campaign_daily", c4.height)
+          print("ncpu4 == ncpu8:", same_u, same_c)
+          print("sessions equal:", u4["sessions"].sum() == c4["sessions"].sum(), u4["sessions"].sum(), c4["sessions"].sum())
+          print("revenue equal:", u4["revenue_cents"].sum() == c4["revenue_cents"].sum())
+          nonorg = c4.filter(pl.col("campaign_id") != "organic")["sessions"].sum()
+          print("assisted >= credited non-organic:", c4["assisted_sessions"].sum() >= nonorg)
+          print("dup keys:", u4.height - u4.select(["user_id","day"]).n_unique(), c4.height - c4.select(["campaign_id","day"]).n_unique())
+          PY
+      - name: Publish
+        if: always()
+        run: |
+          cp -r results /tmp/results
+          git config user.name "bench-bot"; git config user.email "bench-bot@users.noreply.github.com"
+          git fetch -q origin bench-results && git checkout -q -B bench-results origin/bench-results
+          cp /tmp/results/*.txt . && git add *.txt && git commit -qm "stress $(ls /tmp/results)"
+          for i in 1 2 3 4 5; do git push -q origin bench-results && break; sleep 3; git pull -q --rebase origin bench-results; done
